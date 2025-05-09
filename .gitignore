@@ -1,0 +1,44 @@
+# Directorios de dependencias
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Build artifacts
+dist/
+build/
+.parcel-cache/
+.webpack/ # Puede ser generado por Electron Forge
+
+# Electron specific
+out/ # Directorio de salida de Electron Forge por defecto
+.forge-internal/ # Archivos internos de Electron Forge
+forge.config.js # Puede contener información sensible o rutas locales, opcional ignorar
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Editor/IDE specific
+.vscode/ # Opcional, ignora la configuración de VS Code si es específica tuya
+.idea/ # Directorio de JetBrains IDEs (WebStorm, etc.)
+
+# OS specific
+.DS_Store # macOS
+Thumbs.db # Windows
+
+# Misc
+*.iml # IntelliJ IDEA files
+.nyc_output/
+coverage/
+temp/
+
+# Base de datos SQLite
+gestion.db
+
+out/
+software-gestion-backend/server.js

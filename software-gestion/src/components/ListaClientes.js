@@ -1,0 +1,578 @@
+// src/components/ListaClientes.js (Modified for Backend API Communication)
+import React, { useState, useEffect } from 'react';
+import ClientSalesDetails from './ClientSalesDetails'; // Import the new component
+
+// Acceder a la API expuesta globalmente (ahora usa fetch/async)
+const electronAPI = window.electronAPI;
+
+function ListaClientes() {
+  const [clientes, setClientes] = useState([]);
+  // newClient state uses the new DB column names directly
+  const [newClient, setNewClient] = useState({
+    Empresa: '',
+    Cuit: '',
+    Contacto: '',
+    Telefono: '',
+    Mail: '',
+    Direccion: '',
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedClientId, setSelectedClientId] = useState(null);
+  const [editingClientId, setEditingClientId] = useState(null);
+  // editedClientData state uses the new DB column names
+  const [editedClientData, setEditedClientData] = useState({
+      id: null,
+      Empresa: '',
+      Cuit: '',
+      Contacto: '',
+      Telefono: '',
+      Mail: '',
+      Direccion: '',
+  });
+  const [loadingEditData, setLoadingEditData] = useState(false);
+  const [savingData, setSavingData] = useState(false);
+  const [deletingClientId, setDeletingClientId] = useState(null);
+
+  // New state to control visibility of the add form
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  // State to track window width for responsive table columns
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
+
+  // Effect to update window width on resize (Keep this)
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup the event listener when the component unmounts
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+
+  // Function to fetch clients using the new API
+  const fetchClients = async () => { // Make the function async
+    setLoading(true);
+    setError(null);
+    // No deseleccionamos el cliente seleccionado aquí si el modo de edición o adición no está activo,
+    // para que los detalles de ventas se mantengan visibles al refrescar la lista (si el cliente sigue ahí).
+    // Si estamos añadiendo o editando, sí deseleccionamos para evitar inconsistencias.
+    if (!showAddForm && editingClientId === null) {
+       // Don't change selectedClientId
+    } else {
+        setSelectedClientId(null);
+        setEditingClientId(null);
+    }
+
+    // Reset edited data structure with new DB column names
+    setEditedClientData({
+        id: null, Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '',
+    });
+
+    try {
+        // Call the async API function directly and await its result
+        const data = await electronAPI.getClients(); // New API call
+        console.log('Clientes cargados:', data);
+        setClientes(data); // Data is the direct response from the backend API
+
+        // If there was a selected client before refreshing and it's still in the list, maintain the selection
+        if (selectedClientId && data.find(c => c.id === selectedClientId)) {
+             // selectedClientId state is already set, no need to do anything
+             console.log(`[ListaClientes] Kept selected client ID: ${selectedClientId}`);
+        } else if (selectedClientId !== null) {
+             // If the selected client no longer exists in the list or there was no prior selection,
+             // and selectedClientId was not null before, clear the selection.
+            setSelectedClientId(null);
+             console.log('[ListaClientes] Cleared selected client because it was not found after refresh.');
+        }
+         // If selectedClientId was already null, do nothing.
+
+    } catch (err) {
+        // Handle errors from the API call
+        console.error('Error fetching clients:', err);
+        // Check if the error has a message property, use a default message otherwise
+        setError(err.message || 'Error al cargar los clientes.');
+        setClientes([]); // Clear the list on error
+         setSelectedClientId(null); // Clear selection on error
+    } finally {
+        setLoading(false); // Always set loading to false when the fetch is complete (success or error)
+    }
+    // Removed all IPC listener setup and cleanup for fetching, as it's now Promise-based
+  };
+
+  // Effect to fetch clients when the component mounts or selectedClientId changes
+  useEffect(() => {
+    // The fetchClients function is now async and called directly
+    fetchClients();
+
+    // Removed IPC listener setup and cleanup from here, as they are no longer needed for this effect
+    // Cleanup for IPC listeners related to this effect are no longer necessary.
+    // return () => { electronAPI.removeAllGetClientsListeners(); }; // REMOVED
+  }, [selectedClientId]); // Dependencia en selectedClientId para refetch cuando se deselecciona manualmente
+
+
+  // Handle form input changes (for adding new client) (Keep this)
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewClient({ ...newClient, [name]: value }); // Updates newClient state with new column names
+  };
+
+  // Handle form submission (for adding new client)
+  const handleSubmit = async (e) => { // Make the function async
+    e.preventDefault();
+    setError(null);
+
+    if (!newClient.Empresa || !newClient.Cuit) { // Use new column names for validation
+      setError('Empresa y Cuit son campos obligatorios.');
+      // setSavingData(false); // This will be set to false in finally block
+      return;
+    }
+
+    setSavingData(true); // Set saving state
+
+    try {
+        // Call the async API function for adding
+        const response = await electronAPI.addClient(newClient); // New API call
+        console.log('Client added successfully:', response.success);
+         // Handle success response from the backend (which includes the new ID)
+        // The backend should return { success: { id: newId } } on success
+        // You might want to use the new ID for something here if needed.
+        // const newClientId = response.success.id; // Extract the new ID
+
+        // Clear form using new column names
+        setNewClient({ Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '' });
+        setShowAddForm(false); // Hide the add form after successful submission
+        fetchClients(); // Refresh the list (will attempt to keep selection based on useEffect)
+
+    } catch (err) {
+        // Handle errors from the API call (e.g., duplicate Cuit)
+        console.error('Error adding client:', err);
+         // The backend returns { error: "message" } on failure, access err.message
+        setError(err.message || 'Error al agregar el cliente.');
+    } finally {
+        setSavingData(false); // Reset saving state when the operation is complete
+    }
+    // Removed IPC listener setup and cleanup for adding
+  };
+
+  // --- Row Selection Logic --- (Keep this)
+   const handleRowClick = (clientId) => {
+       if (editingClientId !== null && editingClientId === clientId) {
+           // If the clicked row is currently being edited, cancel editing
+           handleCancelEdit();
+       } else if (selectedClientId === clientId) {
+           // If the already selected row is clicked again, deselect it
+           setSelectedClientId(null);
+           // No need to reset editedClientData or editingClientId here, handled by handleCancelEdit or selecting another row
+       } else {
+           // Select the clicked row
+           setSelectedClientId(clientId);
+           // If editing another row, cancel it (handled by the first check)
+           // Reset edited data structure for the newly selected client (will be populated on edit click)
+           setEditedClientData({
+               id: null, Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '',
+           });
+       }
+        setError(null); // Clear errors on row selection change
+   };
+
+
+  // --- Edit Functionality ---
+
+  // Handle click on Edit button (now uses selectedClientId)
+  const handleEditClick = async () => { // Make the function async
+      if (selectedClientId === null) return; // Should be disabled, but good practice
+
+      setEditingClientId(selectedClientId);
+      setLoadingEditData(true);
+      setError(null);
+
+      try {
+           // Call the async API function to get client data by ID
+          const data = await electronAPI.getClientById(selectedClientId); // New API call
+           console.log(`Client ID ${selectedClientId} data loaded:`, data);
+           // Populate editedClientData using new DB column names from fetched data
+          setEditedClientData(data); // Data is the direct response
+      } catch (err) {
+          // Handle errors
+          console.error(`Error fetching client by ID ${selectedClientId}:`, err);
+          setError(err.message || `Error al cargar los datos del cliente.`);
+          setEditingClientId(null);
+          setSelectedClientId(null); // Deselect on error
+           // Reset edited data structure
+          setEditedClientData({
+              id: null, Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '',
+          });
+      } finally {
+          setLoadingEditData(false); // Always set loading to false
+      }
+      // Removed IPC listener setup and cleanup for fetching data for edit
+   };
+
+
+  // Handle changes in the edit form (uses editedClientData state with new DB column names) (Keep this)
+  const handleEditFormChange = (e) => {
+      const { name, value } = e.target;
+      setEditedClientData({ ...editedClientData, [name]: value }); // Updates state with new column names
+  };
+
+  // Handle saving the edited client (uses editedClientData state with new DB column names)
+  const handleSaveEdit = async (e) => { // Make the function async
+      e.preventDefault(); // Prevent default form submission
+      setSavingData(true);
+      setError(null);
+
+      // Basic validation using new DB column names from state
+      if (!editedClientData.Empresa || !editedClientData.Cuit) {
+           setError('Empresa y Cuit son campos obligatorios.');
+           setSavingData(false);
+           return;
+      }
+
+      try {
+          // Call the async API function for updating
+           // The backend expects the ID in the URL and data in the body
+          const response = await electronAPI.updateClient(editedClientData.id, editedClientData); // New API call
+           console.log('Client updated successfully:', response.success);
+           // Handle success response (e.g., { success: { id: ..., changes: ... } })
+           // You might want to use the response data here if needed.
+
+          setEditingClientId(null);
+           // Reset edited data structure
+          setEditedClientData({
+              id: null, Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '',
+          });
+          // Keep selectedClientId as is, so the sales details remain visible (or could deselect)
+          // setSelectedClientId(null); // Uncomment to deselect after saving
+          fetchClients(); // Refresh the list (re-fetches, will attempt to keep selection based on useEffect)
+
+      } catch (err) {
+          // Handle errors (e.g., duplicate Cuit)
+           console.error('Error updating client:', err);
+          setError(err.message || `Error al actualizar el cliente.`);
+      } finally {
+          setSavingData(false); // Reset saving state
+      }
+      // Removed IPC listener setup and cleanup for updating
+  };
+
+  // Handle cancelling edit mode (Keep this)
+  const handleCancelEdit = () => {
+      setEditingClientId(null);
+      // Reset edited data structure
+      setEditedClientData({
+          id: null, Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '',
+      });
+      setError(null); // Clear any edit-related errors
+  };
+
+
+  // --- Delete Functionality ---
+
+  // Handle click on Delete button (now uses selectedClientId)
+  const handleDeleteClick = async () => { // Make the function async
+       if (selectedClientId === null) return; // Should be disabled, but good practice
+
+      if (window.confirm(`¿Está seguro de eliminar el cliente con ID ${selectedClientId}? Si el cliente tiene ventas asociadas, no se podrá eliminar.`)) {
+          setDeletingClientId(selectedClientId);
+          setError(null);
+
+          try {
+              // Call the async API function for deleting
+              const response = await electronAPI.deleteClient(selectedClientId); // New API call
+               console.log(`Client with ID ${selectedClientId} deleted successfully.`, response.success);
+               // Handle success response (e.g., { success: { id: ..., changes: ... } })
+
+              setSelectedClientId(null); // Deselect after deleting
+              fetchClients(); // Refresh the list
+
+          } catch (err) {
+              // Handle errors (e.g., foreign key constraint violation)
+               console.error(`Error deleting client with ID ${selectedClientId}:`, err);
+               setError(err.message || `Error al eliminar el cliente.`);
+          } finally {
+              setDeletingClientId(null); // Reset deleting state
+          }
+          // Removed IPC listener setup and cleanup for deleting
+      }
+  };
+
+  // Handle click on "Nuevo Cliente" button (Keep this)
+  const handleNewClientClick = () => {
+      setShowAddForm(true);
+      setError(null); // Clear any previous errors
+      // Ensure newClient state is reset when opening the form
+      setNewClient({ Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '' });
+      setSelectedClientId(null); // Deselect any client when adding
+      setEditingClientId(null); // Close any open edit form when adding
+  };
+
+  // Handle click on "Cancelar" button in the add form (Keep this)
+  const handleCancelAdd = () => {
+      setShowAddForm(false);
+      setError(null); // Clear any errors
+      // Optional: Reset newClient state here too, or rely on handleNewClientClick
+  };
+
+
+  return (
+    // Apply flexbox styling to the main container
+    // height: '100%' helps ensure the flex items fill the available height if the parent allows it.
+    <div className="container" style={{ display: 'flex', gap: '20px', height: '100%' }}> {/* Added height: '100%' */}
+      {/* Left Pane: Client List and Add Form */}
+      {/* Use conditional flex-basis or width */}
+      <div style={{
+          // Adjusted flex properties for equal size when split
+          flex: selectedClientId === null ? '1 1 100%' : '1 1 50%', // 100% if no client, 50% if client selected
+          minWidth: selectedClientId === null ? 'auto' : '350px', // Allow reasonable min-width when split
+          // Removed overflowY and maxHeight from the pane div
+          paddingRight: selectedClientId === null ? '0' : '10px', // Add some padding if content might be near the edge, remove when full width
+          borderRight: selectedClientId === null ? 'none' : '1px solid #424242', // Optional: Add a separator line
+          transition: 'flex-basis 0.3s ease-in-out', // Smooth transition
+          boxSizing: 'border-box', // Include padding and border in the element's total width and height
+      }}>
+         <h2>Gestión de Clientes</h2>
+
+        {/* Button to show the add form */}
+        {!showAddForm && (
+            <button onClick={handleNewClientClick} disabled={loading || loadingEditData || savingData || deletingClientId !== null}>
+                Nuevo Cliente
+            </button>
+        )}
+
+        {/* Form to Add New Client (Conditional Rendering) */}
+        {/* Ensure the form takes appropriate width when shown */}
+        {showAddForm && (
+            <div style={{ flex: '1 1 100%' }}> {/* Make form take full width of its container */}
+                <h3>Agregar Nuevo Cliente</h3>
+                <form onSubmit={handleSubmit}>
+                  <div>
+                    <label htmlFor="empresa">Empresa:</label>
+                    <input type="text" id="empresa" name="Empresa" value={newClient.Empresa} onChange={handleInputChange} required disabled={savingData || loadingEditData || deletingClientId !== null} />
+                  </div>
+                  <div>
+                    <label htmlFor="cuit">Cuit:</label>
+                    <input type="text" id="cuit" name="Cuit" value={newClient.Cuit} onChange={handleInputChange} required disabled={savingData || loadingEditData || deletingClientId !== null} />
+                  </div>
+                  <div>
+                    <label htmlFor="contacto">Contacto:</label>
+                    <input type="text" id="contacto" name="Contacto" value={newClient.Contacto} onChange={handleInputChange} disabled={savingData || loadingEditData || deletingClientId !== null} />
+                  </div>
+                  <div>
+                    <label htmlFor="telefono">Teléfono:</label>
+                    <input type="text" id="telefono" name="Telefono" value={newClient.Telefono} onChange={handleInputChange} disabled={savingData || loadingEditData || deletingClientId !== null} />
+                  </div>
+                  <div>
+                    <label htmlFor="mail">Mail:</label>
+                    <input type="email" id="mail" name="Mail" value={newClient.Mail} onChange={handleInputChange} disabled={savingData || loadingEditData || deletingClientId !== null} />
+                  </div>
+                  <div>
+                    <label htmlFor="direccion">Dirección:</label>
+                    <input type="text" id="direccion" name="Direccion" value={newClient.Direccion} onChange={handleInputChange} disabled={savingData || loadingEditData || deletingClientId !== null} />
+                  </div>
+                   {/* Button container for form actions */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '20px' }}>
+                     <button type="submit" disabled={savingData || loadingEditData || deletingClientId !== null}>Agregar Cliente</button>
+                     {/* Cancel button for the add form */}
+                     <button type="button" onClick={handleCancelAdd} disabled={savingData || loadingEditData || deletingClientId !== null} style={{ marginLeft: '10px', backgroundColor: '#616161', color: 'white', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)' }}>
+                         Cancelar
+                     </button>
+                  </div>
+                </form>
+            </div>
+        )}
+
+
+         {/* Display errors if any */}
+        {error && <p style={{ color: '#ef9a9a' }}>{error}</p>} {/* Use dark theme error color */}
+
+        {/* Display Client List (Conditional Rendering) */}
+        {/* The list and its buttons are now inside the left pane */}
+        {/* Hide the list entirely if the add form is showing */}
+        {!showAddForm && (
+            <>
+                <h3>Clientes Existentes</h3>
+
+                 {/* Edit and Delete Buttons */}
+                 <div style={{ margin: '20px 0' }}>
+                     <button
+                         onClick={handleEditClick}
+                         disabled={selectedClientId === null || editingClientId !== null || loadingEditData || savingData || deletingClientId !== null}
+                     >
+                         Editar Cliente Seleccionado
+                     </button>
+                     <button
+                         onClick={handleDeleteClick}
+                         disabled={selectedClientId === null || editingClientId !== null || loadingEditData || savingData || deletingClientId !== null}
+                         style={{ marginLeft: '10px' }} // This inline style is targeted by CSS for danger color
+                     >
+                         Eliminar Cliente Seleccionado
+                     </button>
+                 </div>
+
+
+                {loading && <p>Cargando clientes...</p>}
+                {loadingEditData && <p>Cargando datos de cliente para editar...</p>}
+                {savingData && <p>Guardando datos...</p>}
+                {deletingClientId && <p>Eliminando cliente...</p>}
+
+
+                {/* Client List Table */}
+                {!loading && clientes.length > 0 && (
+                  <table>
+                    <thead>
+                      <tr>
+                        {/* Conditionally render the ID column header */}
+                        {selectedClientId === null && <th>ID</th>}
+                        <th>Empresa</th>
+                        <th>Cuit</th>
+                        {/* Conditionally hide columns based on windowWidth - Adjusted Breakpoints for Earlier Hiding */}
+                        {/* These values are increased to hide columns earlier as the window shrinks. */}
+                        {windowWidth > 900 && <th>Contacto</th>} {/* Hide Contacto below 900px */}
+                        {windowWidth > 950 && <th>Teléfono</th>} {/* Hide Teléfono below 950px */}
+                        {windowWidth > 1100 && <th>Mail</th>}     {/* Hide Mail below 1100px */}
+                        {windowWidth > 1200 && <th>Dirección</th>} {/* Hide Dirección below 1200px */}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clientes.map((cliente) => (
+                        <React.Fragment key={cliente.id}>
+                          <tr
+                              onClick={() => handleRowClick(cliente.id)}
+                              style={{ cursor: 'pointer', backgroundColor: selectedClientId === cliente.id ? '#424242' : 'transparent' }} // Use dark theme selected color
+                          >
+                            {/* Conditionally render the ID cell */}
+                            {selectedClientId === null && <td>{cliente.id}</td>}
+                            {/* Display using new DB column names from the fetched data */}
+                            <td>{cliente.Empresa}</td>
+                            <td>{cliente.Cuit}</td>
+                            {/* Conditionally hide cells based on windowWidth, matching the headers */}
+                            {windowWidth > 900 && <td>{cliente.Contacto}</td>}
+                            {windowWidth > 950 && <td>{cliente.Telefono}</td>}
+                            {windowWidth > 1100 && <td>{cliente.Mail}</td>}
+                            {windowWidth > 1200 && <td>{cliente.Direccion}</td>}
+                          </tr>
+                          {/* Inline Edit Form Row - Only show if THIS client is being edited and not adding */}
+                          {editingClientId === cliente.id && !showAddForm && (
+                              <tr>
+                                   {/* Adjust colspan dynamically based on which columns are visible */}
+                                   {/* Calculate visible columns: optional ID + Empresa + Cuit + conditional columns */}
+                                   <td colSpan={
+                                       (selectedClientId === null ? 1 : 0) +
+                                       1 + // Empresa
+                                       1 + // Cuit
+                                       (windowWidth > 900 ? 1 : 0) + // Contacto
+                                       (windowWidth > 950 ? 1 : 0) + // Telefono
+                                       (windowWidth > 1100 ? 1 : 0) + // Mail
+                                       (windowWidth > 1200 ? 1 : 0)   // Direccion
+                                   }>
+                                      <div style={{ padding: '10px', border: '1px solid #424242', margin: '10px 0', backgroundColor: '#2c2c2c' }}> {/* Dark theme styles */}
+                                          <h4>Editar Cliente (ID: {cliente.id})</h4>
+                                          {/* Edit form uses new DB column names as keys */}
+                                          <form onSubmit={handleSaveEdit}> {/* Added onSubmit for form */}
+                                               <div>
+                                                  <label htmlFor={`edit-empresa-${cliente.id}`}>Empresa:</label>
+                                                  <input type="text" id={`edit-empresa-${cliente.id}`} name="Empresa" value={editedClientData.Empresa || ''} onChange={handleEditFormChange} required disabled={savingData} />
+                                              </div>
+                                              <div>
+                                                  <label htmlFor={`edit-cuit-${cliente.id}`}>Cuit:</label>
+                                                  <input type="text" id={`edit-cuit-${cliente.id}`} name="Cuit" value={editedClientData.Cuit || ''} onChange={handleEditFormChange} required disabled={savingData} />
+                                              </div>
+                                              <div>
+                                                  <label htmlFor={`edit-contacto-${cliente.id}`}>Contacto:</label>
+                                                  <input type="text" id={`edit-contacto-${cliente.id}`} name="Contacto" value={editedClientData.Contacto || ''} onChange={handleEditFormChange} disabled={savingData} />
+                                              </div>
+                                               <div>
+                                                  <label htmlFor={`edit-telefono-${cliente.id}`}>Teléfono:</label>
+                                                  <input type="text" id={`edit-telefono-${cliente.id}`} name="Telefono" value={editedClientData.Telefono || ''} onChange={handleEditFormChange} disabled={savingData} />
+                                              </div>
+                                               <div>
+                                                  <label htmlFor={`edit-mail-${cliente.id}`}>Mail:</label>
+                                                  <input type="email" id={`edit-mail-${cliente.id}`} name="Mail" value={editedClientData.Mail || ''} onChange={handleEditFormChange} disabled={savingData} />
+                                              </div>
+                                               <div>
+                                                  <label htmlFor={`edit-direccion-${cliente.id}`}>Dirección:</label>
+                                                  <input type="text" id={`edit-direccion-${cliente.id}`} name="Direccion" value={editedClientData.Direccion || ''} onChange={handleEditFormChange} disabled={savingData} />
+                                              </div>
+
+                                              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}> {/* Added flex for buttons */}
+                                                   <button type="submit" disabled={savingData}>Guardar Cambios</button> {/* Changed to type="submit" */}
+                                                   {/* Cancel edit button */}
+                                                   <button type="button" onClick={handleCancelEdit} disabled={savingData} style={{ marginLeft: '10px', backgroundColor: '#616161', color: 'white', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)' }}>Cancelar Edición</button>
+                                              </div>
+                                          </form>
+                                      </div>
+                                  </td>
+                              </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {!loading && clientes.length === 0 && !error && <p>No hay clientes registrados.</p>}
+            </>
+        )}
+      </div> {/* End of Left Pane */}
+
+
+      {/* Right Pane: Client Sales Details */}
+      {/* Render this pane only when a client is selected and not adding a new client */}
+      {selectedClientId !== null && !showAddForm && (
+          <div style={{
+              // Adjusted flex properties for equal size
+              flex: '1 1 50%', // Takes 50% of available space
+              minWidth: '350px', // Match min-width of left pane
+              overflowY: 'auto', // Keep vertical scroll for sales lists if they get long
+              maxHeight: 'calc(100vh - 120px)', // Keep height constraint for independent scrolling
+              paddingLeft: '10px', // Add some padding for spacing
+              boxSizing: 'border-box', // Include padding in the element's total width and height
+          }}>
+               {/* ClientSalesDetails component now handles showing sales/ventasX and the detail modal internally */}
+               <ClientSalesDetails
+                   clientId={selectedClientId}
+                   clientName={clientes.find(c => c.id === selectedClientId)?.Empresa} // Pass client name for display
+               />
+          </div>
+      )}
+
+        {/* Message when no client is selected and not adding */}
+        {selectedClientId === null && !showAddForm && !loading && clientes.length > 0 && (
+             // This div will take up the space where the right pane *would* be if a client was selected
+             <div style={{
+                 // Use the same flex basis as the right pane when active
+                 flex: '1 1 50%',
+                 minWidth: '350px', // Match min-width of the right pane when active
+                 paddingLeft: '10px',
+                 boxSizing: 'border-box',
+                 display: 'flex', // Use flex to center the message
+                 alignItems: 'center',
+                 justifyContent: 'center',
+                 textAlign: 'center',
+                 borderLeft: '1px solid #424242', // Add a separator line
+             }}>
+                <p>Seleccione un cliente de la lista para ver sus ventas.</p>
+             </div>
+        )}
+
+        {/* Optional: Message when the list is empty and not adding */}
+        {!loading && clientes.length === 0 && !error && !showAddForm && (
+             // This message should likely span the full width when the list is empty.
+             // It might be better placed outside the flex container or handled differently
+             // if you want the "No hay clientes registrados" message to always appear below the title spanning full width.
+             // For now, let's keep it simple and place it below the main flex container,
+             // or modify the left pane to show this message when the list is empty.
+             null // Removed from here, it's handled in the left pane's !showAddForm block
+        )}
+
+    </div>
+  );
+}
+
+export default ListaClientes;
