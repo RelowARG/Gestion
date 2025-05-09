@@ -1,24 +1,24 @@
-// routes/ventasx.js (Revisado - CON COSTO HISTÓRICO EN /filtered)
+// routes/ventasx.js (Revisado - CON COSTO HISTÓRICO EN /filtered Y AHORA CON DESCUENTO EN VentasX_Items)
 const express = require('express');
 const router = express.Router();
 
 // Rutas para la gestión de Ventas X
 
-// Helper para obtener ítems de VentasX por VentaX_id
+// Helper para obtener ítems de VentasX por VentaX_id (AHORA INCLUYE DESCUENTO)
 async function getVentaXItemsByVentaXId(db, ventaXId) {
     // Fetch items associated with a specific VentaX_id
     const [itemRows, itemFields] = await db.execute(`
         SELECT
             vxi.id, vxi.VentaX_id, vxi.Producto_id, vxi.Cantidad, vxi.Precio_Unitario_Venta,
             vxi.Descripcion_Personalizada, vxi.Precio_Unitario_Personalizada, vxi.Cantidad_Personalizada,
-            vxi.Total_Item,
+            vxi.Total_Item, vxi.Descuento_Porcentaje, -- <-- AHORA SELECCIONAMOS EL DESCUENTO
             p.codigo, p.Descripcion AS Producto_Descripcion, p.costo_x_rollo, p.costo_x_1000, p.eti_x_rollo
         FROM VentasX_Items vxi
         LEFT JOIN Productos p ON vxi.Producto_id = p.id
         WHERE vxi.VentaX_id = ?
         ORDER BY vxi.id ASC`, [ventaXId]);
 
-    // Add 'type' property and parse numbers
+    // Add 'type' property and parse numbers, including discount
     const itemsWithType = itemRows.map(item => ({
         ...item,
         Cantidad: parseFloat(item.Cantidad) || null,
@@ -26,13 +26,14 @@ async function getVentaXItemsByVentaXId(db, ventaXId) {
         Cantidad_Personalizada: parseFloat(item.Cantidad_Personalizada) || null,
         Precio_Unitario_Personalizada: parseFloat(item.Precio_Unitario_Personalizada) || null,
         Total_Item: parseFloat(item.Total_Item) || null,
+        Descuento_Porcentaje: parseFloat(item.Descuento_Porcentaje) || null, // <-- PARSEAMOS EL DESCUENTO
         type: item.Producto_id !== null ? 'product' : 'custom'
     }));
 
     return itemsWithType;
 }
 
-// Obtener Ventas X pendientes
+// Obtener Ventas X pendientes (No necesita ítems completos ni descuento)
 router.get('/pending', async (req, res) => {
   try {
     // Fetch VentasX with specific pending statuses or payment statuses
@@ -59,7 +60,7 @@ router.get('/pending', async (req, res) => {
   }
 });
 
-// Obtener Ventas X por Cliente ID, con filtros opcionales de fecha
+// Obtener Ventas X por Cliente ID, con filtros opcionales de fecha (No necesita ítems completos ni descuento)
 router.get('/by-client/:clientId', async (req, res) => {
   const clientId = req.params.clientId;
   const { startDate, endDate } = req.query;
@@ -116,11 +117,11 @@ router.get('/by-client/:clientId', async (req, res) => {
 });
 
 
-// Obtener TODAS las Ventas X, con filtros de fecha E ITEMS (CON COSTO HISTÓRICO)
+// Obtener TODAS las Ventas X, con filtros de fecha E ITEMS (CON COSTO HISTÓRICO Y AHORA CON DESCUENTO)
 router.get('/filtered', async (req, res) => {
     const { startDate, endDate } = req.query;
 
-    // SQL query modified to include historical cost join
+    // SQL query modified to include historical cost join and discount selection
     let sql = `
         SELECT
             vx.id, vx.Fecha, vx.Nro_VentaX, vx.Cliente_id, vx.Estado, vx.Pago, vx.Subtotal, vx.Total, vx.Cotizacion_Dolar, vx.Total_ARS,
@@ -137,15 +138,12 @@ router.get('/filtered', async (req, res) => {
                         'Precio_Unitario_Personalizada', vxi.Precio_Unitario_Personalizada,
                         'Cantidad_Personalizada', vxi.Cantidad_Personalizada,
                         'Total_Item', vxi.Total_Item,
+                        'Descuento_Porcentaje', vxi.Descuento_Porcentaje, -- <-- SELECCIONAMOS EL DESCUENTO EN EL JSON
                         'type', CASE WHEN vxi.Producto_id IS NOT NULL THEN 'product' ELSE 'custom' END,
                         'codigo', p.codigo,
                         'Producto_Descripcion', p.Descripcion,
-                        -- *** INICIO: SELECCIONAR COSTO HISTÓRICO ***
-                        -- Select the historical cost based on the sale date
-                        -- Use COALESCE to fallback to current product cost if no history found for that date
                         'costo_historico_x_1000', COALESCE(pch.costo_x_1000, p.costo_x_1000),
                         'costo_historico_x_rollo', COALESCE(pch.costo_x_rollo, p.costo_x_rollo)
-                        -- *** FIN: SELECCIONAR COSTO HISTÓRICO ***
                     )
                 ELSE NULL END
             ) AS items_json
@@ -153,7 +151,6 @@ router.get('/filtered', async (req, res) => {
         JOIN Clientes c ON vx.Cliente_id = c.id
         LEFT JOIN VentasX_Items vxi ON vx.id = vxi.VentaX_id
         LEFT JOIN Productos p ON vxi.Producto_id = p.id
-        -- *** INICIO: JOIN COMPLEJO CON HISTORIAL DE COSTOS ***
         -- Join with the historical cost table
         LEFT JOIN Producto_Costo_Historico pch ON vxi.Producto_id = pch.Producto_id
             AND pch.Fecha_Valido_Desde = (
@@ -163,7 +160,6 @@ router.get('/filtered', async (req, res) => {
                 WHERE pch_inner.Producto_id = vxi.Producto_id
                   AND pch_inner.Fecha_Valido_Desde <= vx.Fecha -- Compare with the VentaX date
             )
-        -- *** FIN: JOIN COMPLEJO CON HISTORIAL DE COSTOS ***
     `;
 
     const params = [];
@@ -195,7 +191,7 @@ router.get('/filtered', async (req, res) => {
         // Execute the query
         const [rows, fields] = await req.db.execute(sql, params);
 
-        // Process results: parse main sale numbers and item JSON (including historical costs)
+        // Process results: parse main sale numbers and item JSON (including historical costs and discount)
         const ventasXWithItems = rows.map(row => {
              // Parse main sale numerical fields
              const parsedVentaXData = {
@@ -215,13 +211,14 @@ router.get('/filtered', async (req, res) => {
                      if (Array.isArray(parsedJson)) {
                           items = parsedJson
                             .filter(item => item !== null) // Filter out any NULLs from LEFT JOIN
-                            .map(item => ({ // Parse numbers within each item, including historical costs
+                            .map(item => ({ // Parse numbers within each item, including historical costs and discount
                                 ...item,
                                 Cantidad: parseFloat(item.Cantidad) || null,
                                 Precio_Unitario_Venta: parseFloat(item.Precio_Unitario_Venta) || null,
                                 Cantidad_Personalizada: parseFloat(item.Cantidad_Personalizada) || null,
                                 Precio_Unitario_Personalizada: parseFloat(item.Precio_Unitario_Personalizada) || null,
                                 Total_Item: parseFloat(item.Total_Item) || null,
+                                Descuento_Porcentaje: parseFloat(item.Descuento_Porcentaje) || null, // <-- PARSEAMOS EL DESCUENTO DEL JSON
                                 // Parse historical costs
                                 costo_historico_x_1000: parseFloat(item.costo_historico_x_1000) || null,
                                 costo_historico_x_rollo: parseFloat(item.costo_historico_x_rollo) || null,
@@ -245,13 +242,13 @@ router.get('/filtered', async (req, res) => {
         // Send the processed data
         res.json(ventasXWithItems);
     } catch (error) {
-        console.error('Error al obtener todas las VentasX filtradas con costo histórico:', error);
-        res.status(500).json({ error: 'Error interno del servidor al obtener listado de VentasX con costo histórico.' });
+        console.error('Error al obtener todas las VentasX filtradas con costo histórico y descuento:', error);
+        res.status(500).json({ error: 'Error interno del servidor al obtener listado de VentasX con costo histórico y descuento.' });
     }
 });
 
 
-// Obtener las 10 Ventas X más recientes
+// Obtener las 10 Ventas X más recientes (No necesita ítems completos ni descuento)
 router.get('/', async (req, res) => {
   try {
     // Fetch the 10 most recent VentasX
@@ -280,7 +277,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Obtener una Venta X específica por su ID, incluyendo sus ítems
+// Obtener una Venta X específica por su ID, incluyendo sus ítems (AHORA INCLUYE DESCUENTO)
 router.get('/:id', async (req, res) => {
   const ventaXId = req.params.id;
 
@@ -304,7 +301,7 @@ router.get('/:id', async (req, res) => {
     }
 
     const ventaXData = ventaXRows[0];
-    // Fetch associated items using the helper function
+    // Fetch associated items using the helper function (now includes discount)
     const itemRows = await getVentaXItemsByVentaXId(req.db, ventaXId);
 
     // Commit transaction
@@ -322,7 +319,7 @@ router.get('/:id', async (req, res) => {
     // Combine main VentaX data with its items
     const fullVentaXData = {
       ...parsedVentaXData,
-      items: itemRows || [] // itemRows are already parsed by the helper
+      items: itemRows || [] // itemRows are already parsed by the helper and include discount
     };
 
     // Send the complete VentaX data
@@ -336,14 +333,18 @@ router.get('/:id', async (req, res) => {
 });
 
 
-// Agregar una nueva Venta X, incluyendo ítems y actualizando stock
+// Agregar una nueva Venta X, incluyendo ítems y actualizando stock (GUARDA DESCUENTO y calcula Total_Item)
 router.post('/', async (req, res) => {
   // Destructure data from request body (Nro_VentaX is generated by backend)
+  // Ensure Descuento_Porcentaje is destructured from item
   const {
     Fecha, Cliente_id, Estado, Pago, Subtotal, Total,
     Cotizacion_Dolar, Total_ARS,
     items
   } = req.body;
+
+  console.log('[Backend VentasX] Items recibidos en POST /ventasx:', items);
+
 
   // Validation
   if (!Fecha || !Cliente_id || !Estado || !Pago || !Array.isArray(items) || items.length === 0 || Cotizacion_Dolar === undefined || Cotizacion_Dolar === null || isNaN(parseFloat(Cotizacion_Dolar)) || parseFloat(Cotizacion_Dolar) <= 0) {
@@ -389,7 +390,7 @@ router.post('/', async (req, res) => {
         if (existingRows.length === 0) {
             isUnique = true;
         } else {
-            console.warn(`[Backend] Generated Nro_VentaX ${generatedNroVentaX} already exists. Retrying.`);
+            console.warn(`[Backend VentasX] Generated Nro_VentaX ${generatedNroVentaX} already exists. Retrying.`);
             attempts++;
         }
     }
@@ -423,13 +424,13 @@ router.post('/', async (req, res) => {
     const [result] = await req.db.execute(insertVentaXSql, ventaXValues);
     const nuevaVentaXId = result.insertId;
 
-    // 3. Insert the items and update stock
+    // 3. Insert the items and update stock (INCLUYE DESCUENTO y calcula Total_Item)
     if (items.length > 0) {
+      // Añadimos Descuento_Porcentaje a la sentencia INSERT de items
       const insertItemSql = `
-        INSERT INTO VentasX_Items (VentaX_id, Producto_id, Cantidad, Precio_Unitario_Venta, Descripcion_Personalizada, Precio_Unitario_Personalizada, Cantidad_Personalizada, Total_Item)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?);`;
+        INSERT INTO VentasX_Items (VentaX_id, Producto_id, Cantidad, Precio_Unitario_Venta, Descripcion_Personalizada, Precio_Unitario_Personalizada, Cantidad_Personalizada, Total_Item, Descuento_Porcentaje)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`; // <-- Añadimos Descuento_Porcentaje aquí
 
-      const itemValues = [];
       const stockUpdates = [];
 
       // Prepare item data and stock updates
@@ -440,13 +441,26 @@ router.post('/', async (req, res) => {
           let descripcionPersonalizadaToSave = null;
           let precioUnitarioPersonalizadaToSave = null;
           let cantidadPersonalizadaToSave = null;
-          let totalItemToSave = item.Total_Item !== null && item.Total_Item !== undefined && !isNaN(parseFloat(item.Total_Item)) ? parseFloat(item.Total_Item) : null;
+          // Asegurarnos de obtener el descuento del item (viene del frontend)
+          let descuentoPorcentajeToSave = item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== '' && !isNaN(parseFloat(item.Descuento_Porcentaje)) ? parseFloat(item.Descuento_Porcentaje) : 0.00;
+
+          // Re-calculamos Total_Item en el backend para asegurar consistencia con el descuento guardado
+          let totalItemToSave = 0;
 
           if (item.type === 'product') {
               productoIdToSave = item.Producto_id !== null && item.Producto_id !== undefined ? parseInt(item.Producto_id, 10) : null;
               cantidadProductoToSave = item.Cantidad !== null && item.Cantidad !== undefined ? parseFloat(item.Cantidad) : null;
               precioUnitarioVentaProductoToSave = item.Precio_Unitario_Venta !== null && item.Precio_Unitario_Venta !== undefined ? parseFloat(item.Precio_Unitario_Venta) : null;
 
+              // Calcular Total_Item para producto CON descuento
+              if (cantidadProductoToSave !== null && precioUnitarioVentaProductoToSave !== null) {
+                   const subtotalProducto = cantidadProductoToSave * precioUnitarioVentaProductoToSave;
+                   const effectiveDescuento = Math.max(0, Math.min(100, descuentoPorcentajeToSave));
+                   totalItemToSave = subtotalProducto * (1 - effectiveDescuento / 100);
+              }
+
+
+              // Add to stock updates only for product items with valid quantity
               if (productoIdToSave !== null && cantidadProductoToSave > 0) {
                  stockUpdates.push({
                      Producto_id: productoIdToSave,
@@ -454,12 +468,26 @@ router.post('/', async (req, res) => {
                  });
               }
           } else if (item.type === 'custom') {
+              // Ítems personalizados no tienen descuento en este ejemplo, se usa 0.00 si se guarda la columna
               descripcionPersonalizadaToSave = item.Descripcion_Personalizada || null;
               precioUnitarioPersonalizadaToSave = item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== undefined ? parseFloat(item.Precio_Unitario_Personalizada) : null;
               cantidadPersonalizadaToSave = item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== undefined ? parseFloat(item.Cantidad_Personalizada) : null;
+
+               // Calcular Total_Item para item personalizado (sin descuento en este ejemplo)
+               if (cantidadPersonalizadaToSave !== null && precioUnitarioPersonalizadaToSave !== null) {
+                    totalItemToSave = cantidadPersonalizadaToSave * precioUnitarioPersonalizadaToSave;
+               }
+               // Si ítems personalizados tuvieran descuento y viniera del frontend, calcularlo aquí:
+               // const descuentoPersonalizado = item.Descuento_Porcentaje_Personalizado !== undefined && item.Descuento_Porcentaje_Personalizado !== null && item.Descuento_Porcentaje_Personalizado !== '' && !isNaN(parseFloat(item.Descuento_Porcentaje_Personalizado)) ? parseFloat(item.Descuento_Porcentaje_Personalizado) : 0.00;
+               // if (cantidadPersonalizadaToSave !== null && precioUnitarioPersonalizadaToSave !== null) {
+               //    const subtotalPersonalizado = cantidadPersonalizadaToSave * precioUnitarioPersonalizadaToSave;
+               //    const effectiveDescuentoPers = Math.max(0, Math.min(100, descuentoPersonalizado));
+               //    totalItemToSave = subtotalPersonalizado * (1 - effectiveDescuentoPers / 100);
+               // }
           }
 
-          itemValues.push([
+          // Execute insert for this item (INCLUIMOS DESCUENTO Y TOTAL CALCULADO EN BACKEND)
+          await req.db.execute(insertItemSql, [
               nuevaVentaXId,
               productoIdToSave,
               cantidadProductoToSave,
@@ -467,18 +495,12 @@ router.post('/', async (req, res) => {
               descripcionPersonalizadaToSave,
               precioUnitarioPersonalizadaToSave,
               cantidadPersonalizadaToSave,
-              totalItemToSave,
+              parseFloat(totalItemToSave.toFixed(2)), // Guardar Total_Item calculado en backend
+              descuentoPorcentajeToSave, // <-- GUARDAMOS EL DESCUENTO
           ]);
       }
 
-      // Execute item inserts
-       if (itemValues.length > 0) {
-            for(const itemValue of itemValues) {
-                await req.db.execute(insertItemSql, itemValue);
-            }
-       }
-
-       // Update stock
+       // Update stock for sold product items
        const updateStockSql = `UPDATE Stock SET Cantidad = Cantidad - ? WHERE Producto_id = ?;`;
        for (const update of stockUpdates) {
            try {
@@ -488,7 +510,7 @@ router.post('/', async (req, res) => {
                  }
            } catch (stockError) {
                 console.error(`Error al actualizar stock para Producto_id ${update.Producto_id} (VentaX):`, stockError);
-                // Consider rollback
+                // Consider rolling back transaction if stock update fails critically
            }
        }
     }
@@ -512,20 +534,26 @@ router.post('/', async (req, res) => {
           userMessage = `Error de formato de datos o sintaxis SQL: ${error.sqlMessage}`;
      } else if (error.message.includes('Failed to generate a unique Nro_VentaX')) {
          userMessage = error.message;
+     } else if (error.code === 'ER_BAD_FIELD_ERROR') {
+          userMessage = 'Error en la base de datos: Falta la columna de descuento en VentasX_Items o hay un error de sintaxis.';
      }
     res.status(500).json({ error: userMessage });
   }
 });
 
-// Actualizar una Venta X existente por su ID (Solo detalles principales y re-inserción de ítems)
+// Actualizar una Venta X existente por su ID (Actualiza DESCUENTO y re-calcula Total_Item)
 router.put('/:id', async (req, res) => {
   const ventaXId = req.params.id;
   // Destructure data (Nro_VentaX is not updated)
+  // Ensure Descuento_Porcentaje is destructured from item
   const {
     Fecha, Nro_VentaX, Cliente_id, Estado, Pago, Subtotal, Total,
     Cotizacion_Dolar, Total_ARS,
     items
   } = req.body;
+
+    console.log(`[Backend VentasX] Items recibidos en PUT /ventasx/${ventaXId}:`, items);
+
 
   // Validation
   if (!Fecha || !Cliente_id || !Estado || !Pago || !Array.isArray(items) || items.length === 0 || Cotizacion_Dolar === undefined || Cotizacion_Dolar === null || isNaN(parseFloat(Cotizacion_Dolar)) || parseFloat(Cotizacion_Dolar) <= 0) {
@@ -576,16 +604,31 @@ router.put('/:id', async (req, res) => {
         [ventaXId]
     );
 
-    // 3. Delete existing items for this VentaX
+    // 3. Revert stock based on OLD items
+    const stockAdjustmentSql = `UPDATE Stock SET Cantidad = Cantidad + ? WHERE Producto_id = ?;`; // Add back old quantity
+    for (const oldItem of existingProductItems) {
+        try {
+            const [stockResult] = await req.db.execute(stockAdjustmentSql, [oldItem.Cantidad, oldItem.Producto_id]);
+             if (stockResult.affectedRows === 0) {
+                  console.warn(`[Backend VentasX] No se encontró entrada de stock para Producto_id ${oldItem.Producto_id} al revertir stock (VentaX Edit). Stock no revertido completamente.`);
+             }
+        } catch (stockError) {
+            console.error(`[Backend VentasX] Error reverting stock for Producto_id ${oldItem.Producto_id} (VentaX Edit):`, stockError);
+            // Consider rollback if critical
+        }
+    }
+
+
+    // 4. Delete existing items for this VentaX
     const deleteItemsSql = `DELETE FROM VentasX_Items WHERE VentaX_id = ?`;
     await req.db.execute(deleteItemsSql, [ventaXId]);
 
-    // 4. Insert the NEW items provided in the request body
+    // 5. Insert the NEW items provided in the request body (INCLUYE DESCUENTO y re-calcula Total_Item)
     const insertItemSql = `
-      INSERT INTO VentasX_Items (VentaX_id, Producto_id, Cantidad, Precio_Unitario_Venta, Descripcion_Personalizada, Precio_Unitario_Personalizada, Cantidad_Personalizada, Total_Item)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?);`;
+      INSERT INTO VentasX_Items (VentaX_id, Producto_id, Cantidad, Precio_Unitario_Venta, Descripcion_Personalizada, Precio_Unitario_Personalizada, Cantidad_Personalizada, Total_Item, Descuento_Porcentaje)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`; // <-- Añadimos Descuento_Porcentaje aquí
 
-    const newItemValues = [];
+
     const newStockUpdates = []; // Stock updates based on NEW items
 
     if (items.length > 0) {
@@ -597,13 +640,25 @@ router.put('/:id', async (req, res) => {
             let descripcionPersonalizadaToSave = null;
             let precioUnitarioPersonalizadaToSave = null;
             let cantidadPersonalizadaToSave = null;
-            let totalItemToSave = item.Total_Item !== null && item.Total_Item !== undefined && !isNaN(parseFloat(item.Total_Item)) ? parseFloat(item.Total_Item) : null;
+            // Asegurarnos de obtener el descuento del item (viene del frontend)
+            let descuentoPorcentajeToSave = item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== '' && !isNaN(parseFloat(item.Descuento_Porcentaje)) ? parseFloat(item.Descuento_Porcentaje) : 0.00;
+
+            // Re-calculamos Total_Item en el backend para asegurar consistencia con el descuento guardado
+            let totalItemToSave = 0;
 
             if (item.type === 'product') {
                 productoIdToSave = item.Producto_id !== null && item.Producto_id !== undefined ? parseInt(item.Producto_id, 10) : null;
                 cantidadProductoToSave = item.Cantidad !== null && item.Cantidad !== undefined ? parseFloat(item.Cantidad) : null;
                 precioUnitarioVentaProductoToSave = item.Precio_Unitario_Venta !== null && item.Precio_Unitario_Venta !== undefined ? parseFloat(item.Precio_Unitario_Venta) : null;
 
+                 // Calcular Total_Item para producto CON descuento
+                if (cantidadProductoToSave !== null && precioUnitarioVentaProductoToSave !== null) {
+                    const subtotalProducto = cantidadProductoToSave * precioUnitarioVentaProductoToSave;
+                    const effectiveDescuento = Math.max(0, Math.min(100, descuentoPorcentajeToSave));
+                    totalItemToSave = subtotalProducto * (1 - effectiveDescuento / 100);
+               }
+
+                // Add to NEW stock updates
                 if (productoIdToSave !== null && cantidadProductoToSave > 0) {
                     newStockUpdates.push({
                         Producto_id: productoIdToSave,
@@ -611,51 +666,49 @@ router.put('/:id', async (req, res) => {
                     });
                 }
             } else if (item.type === 'custom') {
+                // Ítems personalizados no tienen descuento en este ejemplo, se usa 0.00 si se guarda la columna
                 descripcionPersonalizadaToSave = item.Descripcion_Personalizada || null;
                 precioUnitarioPersonalizadaToSave = item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== undefined ? parseFloat(item.Precio_Unitario_Personalizada) : null;
                 cantidadPersonalizadaToSave = item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== undefined ? parseFloat(item.Cantidad_Personalizada) : null;
+
+                // Calcular Total_Item para item personalizado (sin descuento en este ejemplo)
+                if (cantidadPersonalizadaToSave !== null && precioUnitarioPersonalizadaToSave !== null) {
+                    totalItemToSave = cantidadPersonalizadaToSave * precioUnitarioPersonalizadaToSave;
+               }
+               // Si ítems personalizados tuvieran descuento y viniera del frontend, calcularlo aquí:
+               // const descuentoPersonalizado = item.Descuento_Porcentaje_Personalizado !== undefined && item.Descuento_Porcentaje_Personalizado !== null && item.Descuento_Porcentaje_Personalizado !== '' && !isNaN(parseFloat(item.Descuento_Porcentaje_Personalizado)) ? parseFloat(item.Descuento_Porcentaje_Personalizado) : 0.00;
+               // if (cantidadPersonalizadaToSave !== null && precioUnitarioPersonalizadaToSave !== null) {
+               //    const subtotalPersonalizado = cantidadPersonalizadaToSave * precioUnitarioPersonalizadaToSave;
+               //    const effectiveDescuentoPers = Math.max(0, Math.min(100, descuentoPersonalizado));
+               //    totalItemToSave = subtotalPersonalizado * (1 - effectiveDescuentoPers / 100);
+               // }
             }
 
-            newItemValues.push([
-                ventaXId, // Link to the updated VentaX ID
-                productoIdToSave,
-                cantidadProductoToSave,
-                precioUnitarioVentaProductoToSave,
-                descripcionPersonalizadaToSave,
-                precioUnitarioPersonalizadaToSave,
-                cantidadPersonalizadaToSave,
-                totalItemToSave,
-            ]);
-        }
-
-        // Execute item inserts
-        if (newItemValues.length > 0) {
-             for(const itemValue of newItemValues) {
-                 await req.db.execute(insertItemSql, itemValue);
-             }
+            // Execute insert for the new item (INCLUIMOS DESCUENTO Y TOTAL CALCULADO EN BACKEND)
+             await req.db.execute(insertItemSql, [
+                 ventaXId, // Link to the updated VentaX ID
+                 productoIdToSave,
+                 cantidadProductoToSave,
+                 precioUnitarioVentaProductoToSave,
+                 descripcionPersonalizadaToSave,
+                 precioUnitarioPersonalizadaToSave,
+                 cantidadPersonalizadaToSave,
+                 parseFloat(totalItemToSave.toFixed(2)), // Guardar Total_Item calculado en backend
+                 descuentoPorcentajeToSave, // <-- GUARDAMOS EL DESCUENTO
+             ]);
         }
     }
 
-    // 5. Adjust stock: Revert old quantities, then subtract new quantities
-    const stockAdjustmentSql = `UPDATE Stock SET Cantidad = Cantidad + ? WHERE Producto_id = ?;`; // Add back old quantity
+    // 6. Adjust stock: Subtract new quantities (old stock was reverted in step 3)
     const stockSubtractionSql = `UPDATE Stock SET Cantidad = Cantidad - ? WHERE Producto_id = ?;`; // Subtract new quantity
-
-    // Revert stock based on OLD items
-    for (const oldItem of existingProductItems) {
-        try {
-            await req.db.execute(stockAdjustmentSql, [oldItem.Cantidad, oldItem.Producto_id]);
-        } catch (stockError) {
-            console.error(`Error reverting stock for Producto_id ${oldItem.Producto_id} (VentaX Edit):`, stockError);
-            // Consider rollback
-        }
-    }
-
-    // Subtract stock based on NEW items
     for (const newItemUpdate of newStockUpdates) {
         try {
-            await req.db.execute(stockSubtractionSql, [newItemUpdate.Cantidad_Vendida, newItemUpdate.Producto_id]);
+            const [stockResult] = await req.db.execute(stockSubtractionSql, [newItemUpdate.Cantidad_Vendida, newItemUpdate.Producto_id]);
+             if (stockResult.affectedRows === 0) {
+                  console.warn(`[Backend VentasX] No se encontró entrada de stock para Producto_id ${newItemUpdate.Producto_id} al actualizar stock (VentaX Edit). Stock no actualizado.`);
+             }
         } catch (stockError) {
-            console.error(`Error subtracting new stock for Producto_id ${newItemUpdate.Producto_id} (VentaX Edit):`, stockError);
+            console.error(`[Backend VentasX] Error subtracting new stock for Producto_id ${newItemUpdate.Producto_id} (VentaX Edit):`, stockError);
             // Consider rollback
         }
     }
@@ -675,13 +728,15 @@ router.put('/:id', async (req, res) => {
           userMessage = 'Error: Cliente o Producto seleccionado en los ítems no válido.';
      } else if (error.code === 'ER_PARSE_ERROR' || error.code === 'ER_TRUNCATED_WRONG_VALUE') {
           userMessage = `Error de formato de datos o sintaxis SQL: ${error.sqlMessage}`;
+     } else if (error.code === 'ER_BAD_FIELD_ERROR') {
+          userMessage = 'Error en la base de datos: Falta la columna de descuento en VentasX_Items o hay un error de sintaxis.';
      }
     res.status(500).json({ error: userMessage });
   }
 });
 
 
-// Actualizar el estado y/o pago de una venta X pendiente por su ID
+// Actualizar el estado y/o pago de una venta X pendiente por su ID (No necesita items ni descuento)
 router.put('/pending/:id', async (req, res) => {
     const ventaXId = req.params.id;
     const { Estado, Pago } = req.body;
@@ -733,7 +788,7 @@ router.put('/pending/:id', async (req, res) => {
 });
 
 
-// Eliminar una Venta X por ID, incluyendo sus ítems y revirtiendo stock
+// Eliminar una Venta X por ID, incluyendo sus ítems y revirtiendo stock (No necesita descuento de items para eliminar)
 router.delete('/:id', async (req, res) => {
   const ventaXId = req.params.id;
 
@@ -753,10 +808,10 @@ router.delete('/:id', async (req, res) => {
         try {
              const [stockResult] = await req.db.execute(updateStockSql, [item.Cantidad, item.Producto_id]);
              if (stockResult.affectedRows === 0) {
-                  console.warn(`No se encontró entrada de stock para Producto_id ${item.Producto_id} al eliminar VentaX. Stock no revertido completamente.`);
+                  console.warn(`[Backend VentasX] No se encontró entrada de stock para Producto_id ${item.Producto_id} al eliminar VentaX. Stock no revertido completamente.`);
              }
         } catch (stockError) {
-             console.error(`Error al revertir stock para Producto_id ${item.Producto_id} (VentaX):`, stockError);
+             console.error(`[Backend VentasX] Error al revertir stock para Producto_id ${item.Producto_id} (VentaX):`, stockError);
              // Consider rollback
         }
     }
@@ -788,6 +843,8 @@ router.delete('/:id', async (req, res) => {
     let userMessage = 'Error interno del servidor al eliminar VentaX.';
      if (error.code === 'ER_ROW_IS_REFERENCED_2') {
           userMessage = 'Error: No se puede eliminar la VentaX debido a registros asociados inesperados.';
+     } else if (error.code === 'ER_BAD_FIELD_ERROR') {
+           userMessage = 'Error en la base de datos: Falta la columna de descuento en VentasX_Items o hay un error de sintaxis.';
      }
     res.status(500).json({ error: userMessage });
   }

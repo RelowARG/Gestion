@@ -1,9 +1,9 @@
-// ListaVentasX.js (Basado en la versión original, adaptado para usar VentaItemsEditorX con búsqueda y sin validación de personalizado)
+// ListaVentasX.js (Basado en la versión original, adaptado para usar VentaItemsEditorX con búsqueda, sin validación de personalizado y AHORA CON DESCUENTO)
 // Este componente gestiona la sección de VentasX sin incluir IVA.
 // Incluye comprobaciones de seguridad para evitar errores de acceso a propiedades de undefined.
 
 import React, { useState, useEffect } from 'react';
-import VentaItemsEditorX from './ventasx/VentaItemsEditorX'; // Usamos la versión con búsqueda y sin validación de personalizado
+import VentaItemsEditorX from './ventasx/VentaItemsEditorX'; // Usamos la versión con búsqueda, sin validación de personalizado y AHORA CON DESCUENTO
 import ImportPresupuestoModalX from './ventasx/ImportPresupuestoModalX';
 import { format } from 'date-fns'; // Import the format function from date-fns
 
@@ -20,7 +20,7 @@ function ListaVentasX() {
   const [selectedVentaId, setSelectedVentaId] = useState(null);
   const [editingVentaId, setEditingVentaId] = useState(null);
 
-  // Removed IVA from state definitions
+  // Removed IVA from state definitions, ensure items state can hold discount
   const [editedVentaData, setEditedVentaData] = useState({
       id: null,
       Fecha: '',
@@ -28,25 +28,25 @@ function ListaVentasX() {
       Cliente_id: '',
       Estado: '',
       Pago: '',
-      Subtotal: '', // Now equal to Total
+      Subtotal: '', // Now equal to Total (sum of item.Total_Item which now includes discount)
       Total: '', // Now equal to Subtotal
       Cotizacion_Dolar: '',
       Total_ARS: '',
-      items: [], // Inicializado como array vacío
+      items: [], // Asegurado como array vacío, ítems incluirán Descuento_Porcentaje
   });
 
-  // Removed IVA from state definitions
+  // Removed IVA from state definitions, ensure items state can hold discount
   const [newVentaData, setNewVentaData] = useState({
       Fecha: '',
       // Nro_VentaX is removed from newVentaData state as it's auto-generated
       Cliente_id: '',
       Estado: '',
       Pago: '',
-      Subtotal: '', // This will now be auto-calculated
+      Subtotal: '', // This will now be auto-calculated (sum of item.Total_Item)
       Total: '', // Now equal to Subtotal
       Cotizacion_Dolar: '',
       Total_ARS: '',
-      items: [], // Inicializado como array vacío
+      items: [], // Asegurado como array vacío, ítems incluirán Descuento_Porcentaje
   });
 
   const [loadingEditData, setLoadingEditData] = useState(false);
@@ -56,16 +56,16 @@ function ListaVentasX() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false); // State to control modal visibility
 
-  // Eliminado el estado clearItemsEditorErrorsTrigger
+  // Eliminado el estado clearItemsEditorErrorsTrigger (ya no se usa directamente aquí)
 
 
-  // Function to fetch VentasX using the new API
+  // Function to fetch VentasX using the new API (ensure items with discount are fetched)
   const fetchVentas = async () => { // Make the function async
     setLoading(true);
     setError(null);
      setSelectedVentaId(null);
     setEditingVentaId(null);
-    // Removed IVA from reset data structure
+    // Removed IVA from reset data structure, ensure items state is reset correctly
     setEditedVentaData({
         id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
         Estado: '', Pago: '', Subtotal: '', Total: '',
@@ -73,16 +73,26 @@ function ListaVentasX() {
     });
 
     try {
-         // Call the async API function and await its result
-        const data = await electronAPI.getVentasX(); // New API call (GET /ventasx)
+         // Call the async API function and await its result (GET /ventasx now fetches discount)
+        const data = await electronAPI.getVentasX();
         console.log('VentasX cargadas:', data);
-        // Safely parse numerical values before setting state
+        // Safely parse numerical values before setting state, including item totals and discount
         const parsedVentas = data.map(venta => ({
             ...venta,
             Subtotal: venta.Subtotal !== null && venta.Subtotal !== undefined && !isNaN(parseFloat(venta.Subtotal)) ? parseFloat(venta.Subtotal) : null,
             Total: venta.Total !== null && venta.Total !== undefined && !isNaN(parseFloat(venta.Total)) ? parseFloat(venta.Total) : null,
             Cotizacion_Dolar: venta.Cotizacion_Dolar !== null && venta.Cotizacion_Dolar !== undefined && !isNaN(parseFloat(venta.Cotizacion_Dolar)) ? parseFloat(venta.Cotizacion_Dolar) : null,
             Total_ARS: venta.Total_ARS !== null && venta.Total_ARS !== undefined && !isNaN(parseFloat(venta.Total_ARS)) ? parseFloat(venta.Total_ARS) : null,
+            // Ensure items are parsed, including Descuento_Porcentaje
+            items: Array.isArray(venta.items) ? venta.items.map(item => ({
+                 ...item,
+                 Cantidad: parseFloat(item.Cantidad) || null,
+                 Precio_Unitario_Venta: parseFloat(item.Precio_Unitario_Venta) || null,
+                 Cantidad_Personalizada: parseFloat(item.Cantidad_Personalizada) || null,
+                 Precio_Unitario_Personalizada: parseFloat(item.Precio_Unitario_Personalizada) || null,
+                 Total_Item: parseFloat(item.Total_Item) || null,
+                 Descuento_Porcentaje: parseFloat(item.Descuento_Porcentaje) || null, // Parse Descuento_Porcentaje
+            })) : [], // Asegurar que items siempre sea un array
         }));
         setVentas(parsedVentas); // Set the parsed data
 
@@ -94,10 +104,9 @@ function ListaVentasX() {
     } finally {
         setLoading(false); // Always set loading to false
     }
-    // Removed all IPC listener setup and cleanup for fetching ventasx
   };
 
-  // Function to fetch clients using the new API
+  // Function to fetch clients using the new API (No changes needed)
   const fetchClients = async () => { // Make the function async
       try {
           const data = await electronAPI.getClients(); // New API call (GET /clients)
@@ -107,11 +116,9 @@ function ListaVentasX() {
          console.error('Error fetching clients for ventasx:', err);
          // Decide how to handle error
       }
-      // No loading state controlled here
-      // Removed IPC listener setup and cleanup for fetching clients
    };
 
-    // Function to fetch products using the new API
+    // Function to fetch products using the new API (No changes needed)
   const fetchProductos = async () => { // Make the function async
       try {
           const data = await electronAPI.getProductos(); // New API call (GET /productos)
@@ -121,37 +128,24 @@ function ListaVentasX() {
           console.error('Error fetching products for ventax items:', err);
           setProductos([]); // Asegurar que productos sea un array vacío en caso de error
       }
-       // No loading state controlled here
-       // Removed IPC listener setup and cleanup for fetching products
    };
 
-  // Function to fetch stock (needed to refresh stock view) using the new API
+  // Function to fetch stock (needed to refresh stock view) using the new API (No changes needed)
   const fetchStock = async () => { // Make the function async
        try {
             const data = await electronAPI.getStock(); // New API call (GET /stock)
             console.log('Stock data fetched for refresh (VentasX):', data);
-             // Do something with stock data if needed, or just rely on it being fetched
-             // by ListaStock.js itself if that component is mounted elsewhere.
-             // If this fetch is purely to trigger a refresh in ListaStock,
-             // consider if simply calling fetchStock() in ListaStock is sufficient
-             // when needed from here.
        } catch (err) {
            console.error('Error fetching stock data for refresh (VentasX):', err);
-           // Handle error
        }
-       // No loading state controlled here
-       // Removed IPC listener setup and cleanup for fetching stock
    };
 
 
   useEffect(() => {
-    // Call the async fetch functions directly
     fetchVentas();
     fetchClients();
-    fetchProductos(); // Asegurarse de que productos se carga al montar
+    fetchProductos();
 
-    // Removed IPC listener setup and cleanup from here
-    // return () => { ... }; // REMOVED
   }, []);
 
 
@@ -159,7 +153,7 @@ function ListaVentasX() {
        if (selectedVentaId === ventaId) {
            setSelectedVentaId(null);
            setEditingVentaId(null);
-            // Removed IVA from reset data structure
+            // Removed IVA from reset data structure, ensure items state is reset correctly
            setEditedVentaData({
                id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
                Estado: '', Pago: '', Subtotal: '', Total: '',
@@ -169,7 +163,7 @@ function ListaVentasX() {
            setSelectedVentaId(ventaId);
            if(editingVentaId !== null && editingVentaId !== ventaId) {
                 setEditingVentaId(null);
-                 // Removed IVA from reset data structure
+                 // Removed IVA from reset data structure, ensure items state is reset correctly
                setEditedVentaData({
                    id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
                    Estado: '', Pago: '', Subtotal: '', Total: '',
@@ -181,7 +175,7 @@ function ListaVentasX() {
    };
 
 
-  // Handle input change for New VentaX form (Keep calculation logic)
+  // Handle input change for New VentaX form (Keep calculation logic - Subtotal is sum of item.Total_Item)
   // Removed IVA from calculation logic
   const handleNewVentaInputChange = (e) => {
        const { name, value } = e.target;
@@ -202,7 +196,6 @@ function ListaVentasX() {
                calculatedTotalUSD = subtotal.toFixed(2); // Total USD = Subtotal
            }
 
-
            let calculatedTotalARS = '';
            // Calculate Total ARS only if Total USD and Cotizacion Dolar are valid numbers
            if (calculatedTotalUSD !== '' && !isNaN(parseFloat(calculatedTotalUSD)) && !isNaN(cotizacion) && cotizacion > 0) {
@@ -211,21 +204,25 @@ function ListaVentasX() {
 
            setNewVentaData(prevData => ({
                ...prevData,
-               Total: calculatedTotalUSD, // Total USD = Subtotal
+               Total: calculatedTotalUSD, // Total USD = Subtotal (sum of item.Total_Item including discount)
                Total_ARS: calculatedTotalARS
            }));
        }
        // If items change, handleNewVentaItemsChange already recalculates Subtotal and Total USD and triggers useEffect
   };
 
-   // Handler for when the items list changes in the VentaItemsEditor child component
-   // This handler is responsible for calculating the Subtotal and Total USD for NEW sales.
+   // Handler for when the items list changes in the VentaItemsEditorX child component
+   // This handler is responsible for calculating the Subtotal and Total USD (which is equal to Subtotal in VentasX)
+   // for NEW sales based on the *Total_Item* of each item.
    // The useEffect below will then calculate Total ARS.
    const handleNewVentaItemsChange = (newItems) => {
        // Añadir comprobación de seguridad: asegurar que newItems es un array
        const itemsArray = Array.isArray(newItems) ? newItems : [];
+       console.log('[ListaVentasX] handleNewVentaItemsChange received items:', itemsArray);
+
 
        const calculatedSubtotal = itemsArray.reduce((sum, item) => {
+           // Ensure Total_Item is a number before adding. Total_Item now includes discount.
            const itemTotal = parseFloat(item.Total_Item);
            return sum + (isNaN(itemTotal) ? 0 : itemTotal);
        }, 0).toFixed(2); // Keep 2 decimal places for currency
@@ -234,10 +231,10 @@ function ListaVentasX() {
            const updatedState = {
                ...prevState,
                items: itemsArray, // Usar el array asegurado
-               Subtotal: calculatedSubtotal // Update Subtotal based on items
+               Subtotal: calculatedSubtotal // Update Subtotal based on sum of item.Total_Item (including discount)
            };
 
-           // Recalculate Total USD based on the new Subtotal (no IVA)
+           // Total USD is now simply Subtotal in VentasX
            const subtotal = parseFloat(updatedState.Subtotal);
             if (!isNaN(subtotal)) {
                 updatedState.Total = subtotal.toFixed(2); // Total USD = Subtotal
@@ -245,15 +242,7 @@ function ListaVentasX() {
                 updatedState.Total = '';
             }
 
-
-            // Recalculate Total ARS based on the new Total USD and current Cotizacion_Dolar
-            const cotizacion = parseFloat(updatedState.Cotizacion_Dolar);
-            if (updatedState.Total !== '' && !isNaN(parseFloat(updatedState.Total)) && !isNaN(cotizacion) && cotizacion > 0) {
-                 updatedState.Total_ARS = (parseFloat(updatedState.Total) * cotizacion).toFixed(2);
-            } else {
-                 updatedState.Total_ARS = '';
-            }
-
+            // Total ARS recalculation will happen in the useEffect because Cotizacion_Dolar might not be updated here
 
            return updatedState;
        });
@@ -261,6 +250,7 @@ function ListaVentasX() {
 
     // useEffect to recalculate totals for New VentaX form (Keep calculation logic)
     // Removed IVA dependency and calculation
+    // This useEffect recalculates Total and Total_ARS when items or Cotizacion_Dolar change.
     useEffect(() => {
         if (showAddForm) {
             console.log('[ListaVentasX] Recalculating totals due to items or Cotizacion_Dolar change in add form (no IVA).');
@@ -268,7 +258,7 @@ function ListaVentasX() {
              const itemsArray = Array.isArray(newVentaData.items) ? newVentaData.items : [];
 
             const calculatedSubtotal = itemsArray.reduce((sum, item) => {
-                const itemTotal = parseFloat(item.Total_Item);
+                const itemTotal = parseFloat(item.Total_Item); // Use Total_Item (includes discount)
                 return sum + (isNaN(itemTotal) ? 0 : itemTotal);
             }, 0).toFixed(2);
 
@@ -280,40 +270,62 @@ function ListaVentasX() {
             // Total USD is now simply Subtotal if Subtotal is valid
             if (!isNaN(subtotal)) {
                 calculatedTotalUSD = subtotal.toFixed(2);
+            } else {
+                calculatedTotalUSD = ''; // Clear Total USD if Subtotal is not a number
             }
 
             let calculatedTotalARS = '';
             if (calculatedTotalUSD !== '' && !isNaN(parseFloat(calculatedTotalUSD)) && !isNaN(cotizacion) && cotizacion > 0) {
                 calculatedTotalARS = (parseFloat(calculatedTotalUSD) * cotizacion).toFixed(2);
+            } else {
+                 calculatedTotalARS = ''; // Clear Total ARS if Total USD or Cotizacion is invalid
             }
 
 
             // Update state only if values have changed to prevent infinite loops
             setNewVentaData(prevState => {
-                if (prevState.Subtotal !== calculatedSubtotal || prevState.Total !== calculatedTotalUSD || prevState.Total_ARS !== calculatedTotalARS) {
+                // Ensure values are compared consistently (e.g., as strings or numbers after check)
+                const prevSubtotal = prevState.Subtotal !== '' ? parseFloat(prevState.Subtotal) : NaN;
+                const prevTotal = prevState.Total !== '' ? parseFloat(prevState.Total) : NaN;
+                const prevTotalARS = prevState.Total_ARS !== '' ? parseFloat(prevState.Total_ARS) : NaN;
+                const currentSubtotal = parseFloat(calculatedSubtotal);
+                const currentTotal = parseFloat(calculatedTotalUSD);
+                const currentTotalARS = parseFloat(calculatedTotalARS);
+
+
+                // Check if there's a significant difference to avoid unnecessary state updates
+                // Use small epsilon for floating point comparison or compare string representations
+                const areNumbersEqual = (num1, num2, epsilon = 0.001) => Math.abs(num1 - num2) < epsilon;
+
+                const subtotalChanged = isNaN(prevSubtotal) !== isNaN(currentSubtotal) || (!isNaN(prevSubtotal) && !isNaN(currentSubtotal) && !areNumbersEqual(prevSubtotal, currentSubtotal));
+                const totalChanged = isNaN(prevTotal) !== isNaN(currentTotal) || (!isNaN(prevTotal) && !isNaN(currentTotal) && !areNumbersEqual(prevTotal, currentTotal));
+                const totalArsChanged = isNaN(prevTotalARS) !== isNaN(currentTotalARS) || (!isNaN(prevTotalARS) && !isNaN(currentTotalARS) && !areNumbersEqual(prevTotalARS, currentTotalARS));
+
+
+                if (subtotalChanged || totalChanged || totalArsChanged) {
                      console.log(`[ListaVentasX] Updating totals: Subtotal ${calculatedSubtotal}, Total USD ${calculatedTotalUSD}, Total ARS ${calculatedTotalARS}`);
                     return {
                         ...prevState,
                         Subtotal: calculatedSubtotal,
-                        Total: calculatedTotalUSD, // Total USD = Subtotal
+                        Total: calculatedTotalUSD, // Total USD = Subtotal (sum of item.Total_Item including discount)
                         Total_ARS: calculatedTotalARS,
                     };
                 }
-                return prevState;
+                return prevState; // No change needed
             });
         }
-    }, [newVentaData.items, newVentaData.Cotizacion_Dolar, showAddForm]);
-  // Removed Fact_Nro from newVentaData state as it's auto-generated
+    }, [newVentaData.items, newVentaData.Cotizacion_Dolar, showAddForm]); // Dependencies: items, Cotizacion_Dolar, and form visibility
 
 
     // Handle form submission for New VentaX
     // Removed IVA validation and inclusion in dataToSend
+    // Ensure Descuento_Porcentaje is included in dataToSend for items
   const handleAddVentaSubmit = async (e) => { // Make the function async
       e.preventDefault();
       setSavingData(true);
       setError(null);
 
-      // Removed Nro_VentaX from validation
+      // Added validation for Cotizacion_Dolar
       // Añadir comprobación de seguridad para items
       if (!newVentaData.Fecha || !newVentaData.Cliente_id || !newVentaData.Estado || !newVentaData.Pago || !Array.isArray(newVentaData.items) || newVentaData.items.length === 0 || newVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(newVentaData.Cotizacion_Dolar)) || parseFloat(newVentaData.Cotizacion_Dolar) <= 0) {
            // Updated validation message
@@ -341,7 +353,7 @@ function ListaVentasX() {
 
 
       // Data to send to backend, keys match VentasX DB column names (excluding IVA).
-      // Nro_VentaX is NOT sent here, backend will generate it
+      // Ensure Descuento_Porcentaje is included for product items
       const dataToSend = {
           Fecha: newVentaData.Fecha,
           // Nro_VentaX is removed from dataToSend
@@ -358,6 +370,8 @@ function ListaVentasX() {
           items: newVentaData.items.map(item => ({
               // id is NOT included for new items
               type: item.type, // Send the type
+              // Include Descuento_Porcentaje for product items
+              Descuento_Porcentaje: item.type === 'product' && item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== '' && !isNaN(parseFloat(item.Descuento_Porcentaje)) ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje for product type
 
               Total_Item: item.Total_Item !== null ? parseFloat(item.Total_Item) : null, // Ensure Total_Item is float or null
               // Include fields based on item type
@@ -374,7 +388,7 @@ function ListaVentasX() {
           })),
       };
 
-      console.log('[ListaVentasX] Enviando dataToSend.items al backend:', dataToSend.items);
+      console.log('[ListaVentasX] Enviando dataToSend.items al backend (con Descuento_Porcentaje):', dataToSend.items);
 
       // *** VERIFICAR QUE electronAPI.addVentaX ESTÉ DEFINIDO ANTES DE LLAMAR ***
       if (!electronAPI || typeof electronAPI.addVentaX !== 'function') {
@@ -389,7 +403,6 @@ function ListaVentasX() {
           // Call the async API function for adding
           const response = await electronAPI.addVentaX(dataToSend); // New API call (POST /ventasx)
           console.log('VentaX added successfully:', response.success);
-           // Handle success response (e.g., { success: { id: newId, Nro_VentaX: generatedNumber } })
 
           // Clear form using new column names and items, including dolar fields
           setNewVentaData({
@@ -410,12 +423,12 @@ function ListaVentasX() {
       } finally {
           setSavingData(false);
       }
-      // Removed IPC listener setup and cleanup for adding
   };
 
 
     // Handle Edit click for VentaX
     // Removed IVA from state and fetching logic
+    // Ensure items with discount are fetched into editedVentaData state
   const handleEditClick = async () => { // Make the function async
        if (selectedVentaId === null) return;
 
@@ -424,9 +437,9 @@ function ListaVentasX() {
        setError(null);
 
        try {
-           // Call the async API function to get ventaX data by ID
-           const data = await electronAPI.getVentaXById(selectedVentaId); // New API call (GET /ventasx/:id)
-           console.log(`VentaX ID ${selectedVentaId} data loaded (no IVA):`, data);
+           // Call the async API function to get ventaX data by ID (GET /ventasx/:id now fetches discount in items)
+           const data = await electronAPI.getVentaXById(selectedVentaId);
+           console.log(`VentaX ID ${selectedVentaId} data loaded (no IVA, with items and discount):`, data);
            // Populate editedVentaData including items (which can be product or custom) and dolar fields
            const ventaData = data; // Data is the direct response
            // Format date for input
@@ -438,12 +451,12 @@ function ListaVentasX() {
                Cliente_id: ventaData.Cliente_id || '',
                Estado: ventaData.Estado || '',
                Pago: ventaData.Pago || '',
-               Subtotal: ventaData.Subtotal !== null ? String(ventaData.Subtotal) : '',
+               Subtotal: ventaData.Subtotal !== null ? String(ventaData.Subtotal) : '', // Subtotal (sum of item.Total_Item)
                // Removed IVA field
                Total: ventaData.Total !== null ? String(ventaData.Total) : '', // Total USD (Subtotal)
                Cotizacion_Dolar: ventaData.Cotizacion_Dolar !== null ? String(ventaData.Cotizacion_Dolar) : '',
                Total_ARS: ventaData.Total_ARS !== null ? String(ventaData.Total_ARS) : '',
-               items: Array.isArray(ventaData.items) ? ventaData.items : [], // Asegurado como array
+               items: Array.isArray(ventaData.items) ? ventaData.items : [], // Asegurado como array, should include Descuento_Porcentaje
            });
             // Re-fetch clients and products just in case for the dropdowns
             fetchClients();
@@ -453,7 +466,7 @@ function ListaVentasX() {
            setError(err.message || `Error al cargar los datos de la VentaX.`);
            setEditingVentaId(null);
            setSelectedVentaId(null);
-            // Removed IVA from reset data structure
+            // Removed IVA from reset data structure, ensure items state is reset correctly
            setEditedVentaData({
                id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
                Estado: '', Pago: '', Subtotal: '', Total: '',
@@ -462,11 +475,11 @@ function ListaVentasX() {
        } finally {
            setLoadingEditData(false);
        }
-       // Removed IPC listener setup and cleanup for fetching data for edit
    };
 
-  // Handle input change for Edit VentaX form (Keep calculation logic)
+  // Handle input change for Edit VentaX form (Keep calculation logic - Subtotal is sum of item.Total_Item)
   // Removed IVA from calculation logic
+  // Recalculates Total and Total_ARS when Subtotal or Cotizacion_Dolar change manually in the form.
   const handleEditFormChange = (e) => {
        const { name, value } = e.target;
        let processedValue = value;
@@ -486,11 +499,15 @@ function ListaVentasX() {
             // Total USD is now simply Subtotal if Subtotal is a valid number
             if (!isNaN(subtotal)) {
                 calculatedTotalUSD = subtotal.toFixed(2);
+            } else {
+                 calculatedTotalUSD = ''; // Clear Total USD if Subtotal is not a number
             }
 
             let calculatedTotalARS = '';
             if (calculatedTotalUSD !== '' && !isNaN(parseFloat(calculatedTotalUSD)) && !isNaN(cotizacion) && cotizacion > 0) {
                 calculatedTotalARS = (parseFloat(calculatedTotalUSD) * cotizacion).toFixed(2);
+            } else {
+                 calculatedTotalARS = ''; // Clear Total ARS if Total USD or Cotizacion is invalid
             }
 
             setEditedVentaData(prevData => ({
@@ -501,15 +518,17 @@ function ListaVentasX() {
         }
   };
 
-   // Handler for when the items list changes in the VentaItemsEditor child component during edit
-   // NOTE: This calculation is for DISPLAY purposes in the edit form only.
-   // The backend update handler currently does NOT use this calculated subtotal from the frontend.
-   // Modified to also trigger Total ARS recalculation (Keep this logic)
+   // Handler for when the items list changes in the VentaItemsEditorX child component during edit
+   // This handler recalculates the Subtotal and Total USD based on the *Total_Item* of each item.
+   // It also triggers Total ARS recalculation.
    const handleEditedVentaItemsChange = (newItems) => {
         // Añadir comprobación de seguridad: asegurar que newItems es un array
         const itemsArray = Array.isArray(newItems) ? newItems : [];
+        console.log('[ListaVentasX] handleEditedVentaItemsChange received items:', itemsArray);
+
 
        const calculatedSubtotal = itemsArray.reduce((sum, item) => {
+            // Ensure Total_Item is a number before adding. Total_Item now includes discount.
             const itemTotal = parseFloat(item.Total_Item);
             return sum + (isNaN(itemTotal) ? 0 : itemTotal);
        }, 0).toFixed(2);
@@ -518,18 +537,17 @@ function ListaVentasX() {
             const updatedState = {
                 ...prevState,
                 items: itemsArray, // Usar el array asegurado
-                // Optionally update Subtotal state in the edit form based on item changes
-                // Subtotal: calculatedSubtotal // Uncomment this if you want the Subtotal field to update visually during edit
+                // Update Subtotal state in the edit form based on item changes
+                Subtotal: calculatedSubtotal // Update Subtotal based on sum of item.Total_Item (including discount)
             };
 
-            // Recalculate Total USD based on the (potentially updated) Subtotal (no IVA)
+            // Recalculate Total USD based on the new Subtotal (no IVA)
             const subtotal = parseFloat(updatedState.Subtotal);
             if (!isNaN(subtotal)) {
                 updatedState.Total = subtotal.toFixed(2); // Total USD = Subtotal
             } else {
-                 updatedState.Total = '';
+                 updatedState.Total = ''; // Clear Total USD if Subtotal is not a number
             }
-
 
             // Recalculate Total ARS based on the new Total USD and current Cotizacion_Dolar
             const cotizacion = parseFloat(updatedState.Cotizacion_Dolar);
@@ -546,15 +564,14 @@ function ListaVentasX() {
 
 
     // Handle Save for Edit VentaX form
-    // **** CORRECCIÓN PRINCIPAL: Incluir items en dataToSend y validar items ****
-    // NOTE: The backend update-ventax handler *does* process items and manages CashFlow.
+    // **** CORRECCIÓN PRINCIPAL: Incluir items con Descuento_Porcentaje en dataToSend y validar items ****
   const handleSaveEdit = async (e) => { // Make the function async
       e.preventDefault();
       setSavingData(true);
       setError(null);
 
       // VALIDACIÓN FRONTAL MEJORADA
-      // Removed Nro_VentaX from validation
+      // Added validation for Cotizacion_Dolar
       // Añadir comprobación de seguridad para items
       if (!editedVentaData.Fecha || !editedVentaData.Cliente_id || !editedVentaData.Estado || !editedVentaData.Pago || editedVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(editedVentaData.Cotizacion_Dolar)) || parseFloat(editedVentaData.Cotizacion_Dolar) <= 0) {
            // Updated validation message
@@ -570,12 +587,12 @@ function ListaVentasX() {
       }
       // **** FIN VALIDACIÓN DE ITEMS ****
 
+       // Validate calculated/potentially manually edited totals
        if (editedVentaData.Subtotal !== '' && isNaN(parseFloat(editedVentaData.Subtotal))) {
            setError('Subtotal debe ser un número válido.');
            setSavingData(false);
            return;
        }
-        // Total (USD) and Total ARS are calculated, but ensure they are numbers if not empty.
          if (editedVentaData.Total !== '' && isNaN(parseFloat(editedVentaData.Total))) {
              setError('Error interno: Total USD calculado no es un número válido.');
              setSavingData(false);
@@ -599,6 +616,7 @@ function ListaVentasX() {
       // Send data to backend - includes all main details and the items array.
       // The backend update handler is expected to handle item deletion/re-insertion and CashFlow.
       // Nro_VentaX is NOT sent here for update
+      // Ensure Descuento_Porcentaje is included for product items in dataToSend
       const dataToSend = {
           id: editedVentaData.id,
           Fecha: formattedFecha, // Use the formatted date
@@ -617,7 +635,10 @@ function ListaVentasX() {
           items: editedVentaData.items.map(item => ({
               id: item.id || undefined, // Include ID if it exists (for existing items)
               type: item.type, // Send the type
-              Total_Item: item.Total_Item !== null ? parseFloat(item.Total_Item) : null,
+               // Include Descuento_Porcentaje for product items
+              Descuento_Porcentaje: item.type === 'product' && item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== '' && !isNaN(parseFloat(item.Descuento_Porcentaje)) ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje for product type
+
+              Total_Item: item.Total_Item !== null ? parseFloat(item.Total_Item) : null, // Send Total_Item (calculated with discount)
               ...(item.type === 'product' && {
                   Producto_id: item.Producto_id,
                   Cantidad: item.Cantidad !== null ? parseFloat(item.Cantidad) : null,
@@ -632,9 +653,12 @@ function ListaVentasX() {
           // **** FIN INCLUIR ITEMS ****
       };
 
+      console.log('[ListaVentasX] Enviando dataToSend al backend (con Descuento_Porcentaje en items):', dataToSend);
+
+
       try {
            // Call the async API function for updating
-           // The backend expects the ID in the URL and data in the body
+           // The backend expects the ID in the URL and data in the body (PUT /ventasx/:id)
            // *** VERIFICAR QUE electronAPI.updateVentaX ESTÉ DEFINIDO ANTES DE LLAMAR ***
            if (!electronAPI || typeof electronAPI.updateVentaX !== 'function') {
                console.error('electronAPI.updateVentaX is not defined or not a function.');
@@ -642,12 +666,11 @@ function ListaVentasX() {
                setSavingData(false);
                return;
            }
-          const response = await electronAPI.updateVentaX(dataToSend.id, dataToSend); // New API call (PUT /ventasx/:id)
+          const response = await electronAPI.updateVentaX(dataToSend.id, dataToSend);
            console.log('VentaX updated successfully:', response.success);
-           // Handle success response
 
           setEditingVentaId(null);
-           // Reset edited data structure with dolar fields
+           // Reset edited data structure with dolar fields, ensure items state is reset correctly
           setEditedVentaData({
               id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
               Estado: '', Pago: '', Subtotal: '', Total: '',
@@ -656,6 +679,7 @@ function ListaVentasX() {
           setSelectedVentaId(null);
           fetchVentas(); // Refresh the list
           // NOTE: Stock is handled by backend during update
+          fetchStock(); // Refresh stock display after potential stock changes
 
       } catch (err) {
            console.error('Error updating ventaX:', err);
@@ -663,12 +687,11 @@ function ListaVentasX() {
       } finally {
           setSavingData(false);
       }
-      // Removed IPC listener setup and cleanup for updating
   };
 
   const handleCancelEdit = () => { // Keep this
       setEditingVentaId(null);
-      // Reset edited data structure with dolar fields
+      // Reset edited data structure with dolar fields, ensure items state is reset correctly
       setEditedVentaData({
           id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
           Estado: '', Pago: '', Subtotal: '', Total: '',
@@ -680,7 +703,7 @@ function ListaVentasX() {
 
   // --- Delete Functionality ---
 
-  // Handle Delete for VentaX (No changes needed for IVA)
+  // Handle Delete for VentaX (No changes needed for IVA or Discount)
   // NOTE: The backend delete-ventax handler *does* reverse stock changes.
   // The confirmation message text should be updated to reflect this if desired.
   const handleDeleteClick = async () => { // Make the function async
@@ -716,14 +739,13 @@ function ListaVentasX() {
               setDeletingVentaId(null);
           }
       }
-      // Removed IPC listener setup and cleanup for deleting
    };
 
-    // Handle click on "Nueva VentaX" button (Keep this)
+    // Handle click on "Nueva VentaX" button (Keep this, ensure items state is reset)
     const handleNewVentaClick = () => {
         setShowAddForm(true);
         setError(null);
-         // Removed Nro_VentaX from reset state
+         // Removed Nro_VentaX from reset state, ensure items state is reset correctly
          setNewVentaData({
              Fecha: '', // Nro_VentaX is not in state anymore
              Cliente_id: '', Estado: '',
@@ -734,17 +756,17 @@ function ListaVentasX() {
         setEditingVentaId(null);
          fetchClients();
          fetchProductos(); // Asegurarse de que productos se carga al abrir el formulario
-         // Eliminado el reset del clearItemsEditorErrorsTrigger
+         // No need to reset clearTrigger here as VentaItemsEditorX doesn't use it for errors anymore
     };
 
     // Handle click on "Cancelar" button in the add form (Keep this)
     const handleCancelAdd = () => {
         setShowAddForm(false);
         setError(null);
-        // Eliminado el reset del clearItemsEditorErrorsTrigger
+        // No need to reset clearTrigger here
     };
 
-    // NUEVO: Define the function to handle opening the Import Presupuesto modal (Keep this)
+    // Handle click on the "Importar Presupuesto" button (Keep this logic)
     const handleImportPresupuestoClick = () => {
         setShowImportModal(true); // Show the import modal
         setError(null); // Clear any previous errors
@@ -755,12 +777,13 @@ function ListaVentasX() {
 
 
     // Handle data imported from PresupuestoModalX (Keep this logic)
-    // Removed IVA from mapping
+    // Modified to import items with their discount percentage
     const handlePresupuestoImported = (presupuestoData) => {
         console.log("Presupuesto imported:", presupuestoData);
         console.log("Presupuesto items received:", presupuestoData.items);
 
         // Añadir comprobación de seguridad: asegurar que presupuestoData.items es un array
+        // Map the imported budget data to the newVentaData state structure, including discount for product items
         const importedItems = (Array.isArray(presupuestoData.items) ? presupuestoData.items : []).map(item => {
             console.log("Mapping item before transformation:", item); // Log original item
 
@@ -773,15 +796,29 @@ function ListaVentasX() {
                 mappedItem = {
                     type: 'product', // Identificar el tipo de ítem
                     Producto_id: item.Producto_id,
-                    Cantidad: item.Cantidad, // Quantity is the same
-                    // Calculate Precio_Unitario_Venta based on Total_Item and Quantity
-                    // Or use item.Precio_Unitario from the budget if provided and valid
-                    Precio_Unitario_Venta: (item.Total_Item !== null && item.Cantidad > 0)
-                                            ? parseFloat((item.Total_Item / item.Cantidad).toFixed(2))
-                                            : (item.Precio_Unitario !== null && item.Precio_Unitario !== undefined && item.Precio_Unitario !== '')
-                                                ? parseFloat(item.Precio_Unitario) // Fallback to original item price from budget
-                                                : '', // If neither is possible, leave empty
-                    Total_Item: item.Total_Item, // Total is the same
+                    Cantidad: item.Cantidad !== null ? parseFloat(item.Cantidad) : null, // Parse quantity
+                    // Use the Price_Unitario_Venta from the budget item if available, otherwise calculate from Total_Item and Quantity
+                    // If importing from presupuesto, Precio_Unitario from presupuesto_items is the price *before* discount.
+                    // Total_Item in presupuesto_items is the total *after* discount.
+                    // We need to store the price *before* discount as Precio_Unitario_Venta and the discount % in the new item.
+                    Precio_Unitario_Venta: (item.Precio_Unitario !== null && item.Precio_Unitario !== undefined && item.Precio_Unitario !== '')
+                                                ? parseFloat(item.Precio_Unitario) // Prefer the explicit Precio_Unitario if available
+                                                : (item.Total_Item !== null && item.Cantidad > 0)
+                                                    ? parseFloat((item.Total_Item / item.Cantidad).toFixed(2)) // Fallback: calculate price BEFORE discount if Total_Item and Quantity are available (this assumes Total_Item in budget is AFTER discount)
+                                                    : null, // If neither is possible, leave null
+
+                    Descuento_Porcentaje: (item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== '')
+                                        ? parseFloat(item.Descuento_Porcentaje) // Import the discount percentage directly from budget if available
+                                        : 0.00, // Default to 0 if not provided or invalid
+
+                    // Calculate the Total_Item for the sale item based on the imported quantity, price (before discount), and imported discount
+                    Total_Item: calculateTotalItem(
+                        item.Cantidad !== null ? parseFloat(item.Cantidad) : 0,
+                        (item.Precio_Unitario !== null && item.Precio_Unitario !== undefined && item.Precio_Unitario !== '') ? parseFloat(item.Precio_Unitario) : ((item.Total_Item !== null && item.Cantidad > 0) ? parseFloat((item.Total_Item / item.Cantidad).toFixed(2)) : 0), // Use the determined price BEFORE discount
+                         (item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== '') ? parseFloat(item.Descuento_Porcentaje) : 0
+                    ),
+
+
                     // Include product details for display in VentaItemsEditorX
                     codigo: item.codigo, // This should come from the JOIN in the backend query for presupuestos
                     Descripcion: item.Descripcion, // This should come from the JOIN
@@ -792,23 +829,25 @@ function ListaVentasX() {
                  mappedItem.Precio_Unitario_Personalizada = null;
 
                  // LOGGING para depurar item mapeado de producto
-                 console.log("Mapped product item:", mappedItem);
+                 console.log("Mapped product item (with discount & recalc Total_Item):", mappedItem);
                  return mappedItem;
 
             } else {
                 // Assume it's a custom item
-                // Map Presupuesto_Items personalized fields to Venta_Items personalized fields
+                // Map Presupuesto_Items personalized fields to VentaX_Items personalized fields
                 const mappedItem = {
                     type: 'custom', // Identificar el tipo de ítem
-                    Descripcion_Personalizada: item.Descripcion_Personalizada,
-                    Cantidad_Personalizada: item.Cantidad_Personalizada, // Quantity is the same
-                    Precio_Unitario_Personalizada: item.Precio_Unitario_Personalizada, // Price is the same
-                    Total_Item: item.Total_Item, // Total is the same
+                    Descripcion_Personalizada: item.Descripcion_Personalizada || null,
+                    Cantidad_Personalizada: item.Cantidad_Personalizada !== null ? parseFloat(item.Cantidad_Personalizada) : null, // Parse quantity
+                    Precio_Unitario_Personalizada: item.Precio_Unitario_Personalizada !== null ? parseFloat(item.Precio_Unitario_Personalizada) : null, // Parse price
+                    Total_Item: item.Total_Item !== null ? parseFloat(item.Total_Item) : null, // Parse total
+                    // Nota: Ítems personalizados en VentasX no tienen descuento.
                 };
                  // Ensure product-specific fields are null for custom items
                  mappedItem.Producto_id = null;
                  mappedItem.Cantidad = null;
                  mappedItem.Precio_Unitario_Venta = null;
+                 mappedItem.Descuento_Porcentaje = null; // Ensure discount is null for custom items
                  mappedItem.codigo = null;
                  mappedItem.Descripcion = null;
 
@@ -829,21 +868,21 @@ function ListaVentasX() {
                  Cliente_id: presupuestoData.Cliente_id || '', // Set client ID
                  // Estado: '', // Keep empty
                  // Pago: '', // Keep empty
-                 items: importedItems, // Set the imported items (asegurado como array)
+                 items: importedItems, // Set the imported items (asegurado como array, includes discount and calculated Total_Item)
                  // No IVA in VentasX
                  // Import Cotizacion_Dolar from budget
                  Cotizacion_Dolar: presupuestoData.Cotizacion_Dolar !== null ? String(presupuestoData.Cotizacion_Dolar) : '',
 
-                 // The useEffect watching items and Cotizacion_Dolar will handle the total recalculation
+                 // The useEffect watching items and Cotizacion_Dolar will now handle the total recalculation based on item.Total_Item
                  // No need to call handleNewVentaItemsChange directly here anymore.
 
                  // Keep other fields as they were
                  // Nro_VentaX is not in newVentaData state anymore
                  Estado: prevState.Estado,
                  Pago: prevState.Pago,
-                 Subtotal: prevState.Subtotal,
-                 Total: prevState.Total,
-                 Total_ARS: prevState.Total_ARS,
+                 Subtotal: prevState.Subtotal, // Will be updated by useEffect
+                 Total: prevState.Total, // Will be updated by useEffect
+                 Total_ARS: prevState.Total_ARS, // Will be updated by useEffect
              };
 
 
@@ -853,6 +892,25 @@ function ListaVentasX() {
         // Close the modal is handled by the modal's onImport callback
         // setShowImportModal(false); // This is handled by the modal's onClose prop callback
     };
+
+     // --- Helper function for Total Item Calculation (Needed for import mapping) ---
+     // Copy the calculateTotalItem function here as it's used in handlePresupuestoImported
+     const calculateTotalItem = (cantidad, precioUnitario, descuentoPorcentaje) => {
+         const cantidadFloat = parseFloat(cantidad);
+         const precioUnitarioFloat = parseFloat(precioUnitario);
+         const descuentoFloat = parseFloat(descuentoPorcentaje) || 0;
+
+         const subtotal = (isNaN(cantidadFloat) || cantidadFloat < 0 || isNaN(precioUnitarioFloat) || precioUnitarioFloat < 0)
+                           ? 0
+                           : cantidadFloat * precioUnitarioFloat;
+
+         const effectiveDescuento = Math.max(0, Math.min(100, descuentoFloat));
+
+         const totalItem = subtotal * (1 - effectiveDescuento / 100);
+
+         return parseFloat(totalItem.toFixed(2));
+     };
+
 
     // Helper functions for Estado and Pago (Keep these)
     const getEstadoDisplayText = (estado) => {
@@ -995,7 +1053,7 @@ function ListaVentasX() {
                     </div>
                     {/* Removed IVA Select Field */}
              <div>
-                <label htmlFor="new-total">Total USD:</label>
+                <label htmlFor="new-total">Total USD:</label> {/* This is equal to Subtotal in VentasX */}
                 <input type="text" id="new-total" name="Total" value={newVentaData.Total} readOnly disabled={true} style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }} />
             </div>
              <div>
@@ -1025,12 +1083,15 @@ function ListaVentasX() {
                  />
              </div>
 
+                    {/* Use VentaItemsEditorX - it now handles discount internally */}
                     <VentaItemsEditorX
-                         items={newVentaData.items}
+                         items={newVentaData.items} // items state might contain discount
                          onItemsChange={handleNewVentaItemsChange}
                          productos={productos} // Asegurado que productos es array
                          savingData={savingData || loadingEditData || deletingVentaId !== null}
-                         // Eliminado el clearTrigger
+                         // clearTrigger is not strictly needed by VentaItemsEditorX for errors anymore,
+                         // but it can be kept if the editor uses it for other internal state resets.
+                         // clearTrigger={clearItemsEditorErrorsTrigger}
                     />
                     {/* Añadir comprobación de seguridad antes de acceder a length */}
                     {(!Array.isArray(productos) || productos.length === 0) && !loadingEditData && !loading && !savingData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos o no hay productos disponibles para los ítems.</p>}
@@ -1190,6 +1251,7 @@ function ListaVentasX() {
                                             </div>
                                              <div>
                                                 <label htmlFor={`edit-subtotal-${venta.id}`}>Subtotal:</label>
+                                                {/* Subtotal input is manual input for edit, but recalculates Total and Total ARS */}
                                                 <input type="number" id={`edit-subtotal-${venta.id}`} name="Subtotal" value={editedVentaData.Subtotal || ''} onChange={handleEditFormChange} disabled={savingData} step="0.01"/>
                                             </div>
                                              {/* Removed IVA Select Field */}
@@ -1224,13 +1286,13 @@ function ListaVentasX() {
                                                  />
                                              </div>
 
-                                            {/* VentaItemsEditorX para EDITAR */}
+                                            {/* Use VentaItemsEditorX for EDITING - it now handles discount internally */}
                                              <VentaItemsEditorX
-                                                  items={editedVentaData.items} // Asegurado que items es array
+                                                  items={editedVentaData.items} // items state should contain discount from fetch
                                                   onItemsChange={handleEditedVentaItemsChange}
                                                   productos={productos} // Asegurado que productos es array
                                                   savingData={savingData || clientes.length === 0 || productos.length === 0}
-                                                  // Eliminado el clearTrigger
+                                                  // clearTrigger is not used for edit
                                              />
                                               {/* Añadir comprobación de seguridad antes de acceder a length */}
                                               {(!Array.isArray(productos) || productos.length === 0) && loadingEditData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos o no hay productos disponibles para los ítems.</p>}
@@ -1266,7 +1328,7 @@ function ListaVentasX() {
         {showImportModal && (
              <ImportPresupuestoModalX
                  onClose={() => setShowImportModal(false)} // Function to close the modal
-                 onImport={handlePresupuestoImported} // Callback to receive imported data
+                 onImport={handlePresupuestoImported} // Callback to receive imported data (now handles discount)
                  existingClientId={newVentaData.Cliente_id} // Pass the selected client ID for filtering
              />
         )}

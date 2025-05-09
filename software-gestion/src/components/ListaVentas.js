@@ -383,7 +383,7 @@ function ListaVentas() {
               // id is NOT included for new items
               // *** CORRECCIÓN: Incluir la propiedad 'type' aquí ***
               type: item.type, // <-- Asegúrate de enviar el tipo de ítem al backend
-
+              Descuento_Porcentaje: item.Descuento_Porcentaje !== null ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje
               Total_Item: item.Total_Item !== null ? parseFloat(item.Total_Item) : null, // Ensure Total_Item is float or null
               // Include fields based on item type (these are already conditional based on item.type)
               ...(item.type === 'product' && {
@@ -649,6 +649,7 @@ function ListaVentas() {
           items: editedVentaData.items.map(item => ({
               id: item.id || undefined, // Include ID if it exists (for existing items)
               type: item.type, // Send the type
+              Descuento_Porcentaje: item.Descuento_Porcentaje !== null ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje
               Total_Item: item.Total_Item !== null ? parseFloat(item.Total_Item) : null,
               ...(item.type === 'product' && {
                   Producto_id: item.Producto_id,
@@ -814,6 +815,7 @@ function ListaVentas() {
                                                 ? parseFloat(item.Precio_Unitario) // Fallback to original item price from budget
                                                 : '', // If neither is possible, leave empty
                     Total_Item: item.Total_Item, // Total is the same
+                    Descuento_Porcentaje: item.Descuento_Porcentaje !== null ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje
                     // Include product details for display in VentaItemsEditor
                     codigo: item.codigo, // This should come from the JOIN in the backend query for presupuestos
                     Descripcion: item.Descripcion, // This should come from the JOIN (alias Producto_Descripcion)
@@ -836,6 +838,7 @@ function ListaVentas() {
                     Cantidad_Personalizada: item.Cantidad_Personalizada, // Quantity is the same
                     Precio_Unitario_Personalizada: item.Precio_Unitario_Personalizada, // Price is the same
                     Total_Item: item.Total_Item, // Total is the same
+                    Descuento_Porcentaje: item.Descuento_Porcentaje !== null ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje
                 };
                  // Ensure product-specific fields are null for custom items
                  mappedItem.Producto_id = null;

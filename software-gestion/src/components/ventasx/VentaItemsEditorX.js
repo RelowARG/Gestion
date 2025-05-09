@@ -1,7 +1,7 @@
 // src/components/ventasx/VentaItemsEditorX.js
 // Este componente gestiona la adición y listado de ítems de VentaX (productos y personalizados).
-// Incluye funcionalidad de búsqueda y tabla para seleccionar productos (similar a VentaItemsEditor).
-// NO valida los campos del ítem personalizado al agregarlo a la lista.
+// Incluye funcionalidad de búsqueda y tabla para seleccionar productos.
+// AHORA INCLUYE LÓGICA Y CAMPO DE DESCUENTO PARA ÍTEMS DE PRODUCTO, SIMILAR A VENTA_ITEMS.
 // Utiliza clearTrigger para limpiar estados internos.
 
 import React, { useState, useEffect, useRef } from 'react'; // Importa useRef
@@ -11,6 +11,7 @@ import React, { useState, useEffect, useRef } from 'react'; // Importa useRef
 function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearTrigger }) {
     // items: Array de ítems de la venta X actual (recibido del componente padre).
     //        Puede contener objetos de producto (con Producto_id) o personalizados (con Descripcion_Personalizada).
+    //        AHORA LOS ÍTEMS DE PRODUCTO TAMBIÉN INCLUIRÁN Descuento_Porcentaje y el Total_Item calculado con descuento.
     // onItemsChange: Función callback para notificar al padre cuando los ítems cambian
     // productos: Lista COMPLETA de productos del catálogo (se usará para mostrar la lista y filtrar)
     // savingData: Booleano para deshabilitar inputs mientras se guarda
@@ -23,7 +24,8 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
     const [newItemProductoData, setNewItemProductoData] = useState({
         Producto_id: '', // ID del producto seleccionado (ahora viene de la selección en la lista filtrada)
         Cantidad: '', // Cantidad para productos
-        Precio_Unitario_Venta: '', // Precio de venta unitario para productos (precargado desde el producto seleccionado)
+        Precio_Unitario_Venta: '', // Precio de venta unitario para productos (precargado desde el producto seleccionado) - ESTE ES EL PRECIO ANTES DE DESCUENTO
+        Descuento_Porcentaje: '', // Campo para el porcentaje de descuento para productos
         // Campos para mostrar detalles del producto seleccionado en la UI
         codigo: '',
         Descripcion: '',
@@ -34,12 +36,14 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
         Descripcion_Personalizada: '',
         Cantidad_Personalizada: '', // Cantidad para ítems personalizados
         Precio_Unitario_Personalizada: '', // Precio unitario para ítems personalizados
+        // Nota: Los ítems personalizados en VentasX no tienen descuento por ahora, según el modelo de Ventas.
+        // Descuento_Porcentaje_Personalizado: '', // Si se necesitara descuento en personalizados, se agregaría aquí
     });
 
     // Estado para manejar errores específicos de la sección de ítems
     const [itemError, setItemError] = useState(null);
 
-    // --- Estados para la búsqueda y lista visible (Implementación similar a VentaItemsEditor) ---
+    // --- Estados para la búsqueda y lista visible ---
     const [productSearchTerm, setProductSearchTerm] = useState(''); // Lo que el usuario escribe en el input de búsqueda/filtro
     // Lista de productos actualmente mostrada (filtrada o completa)
     // Inicialmente vacía, se llenará con el efecto al recibir la prop 'productos'
@@ -47,7 +51,7 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
     // --- FIN Estados de búsqueda ---
 
 
-    // --- Efecto para inicializar la lista mostrada cuando los productos cambian (Similar a VentaItemsEditor) ---
+    // --- Efecto para inicializar la lista mostrada cuando los productos cambian ---
     useEffect(() => {
         // Añadir comprobación de seguridad: solo actualizar si productos es un array
         if (Array.isArray(productos)) {
@@ -61,7 +65,7 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
         }
     }, [productos]); // Dependencia: la lista completa de productos
 
-    // --- Efecto para limpiar errores internos y estado de búsqueda cuando se dispara el trigger (Similar a VentaItemsEditor) ---
+    // --- Efecto para limpiar errores internos y estado de búsqueda cuando se dispara el trigger ---
     useEffect(() => {
         console.log('[VentaItemsEditorX] Clear trigger fired. Clearing internal state.');
         setItemError(null); // Limpiar el error interno del editor
@@ -69,7 +73,9 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
         setProductSearchTerm('');
         // Asegurar que displayList se resetee a un array, incluso si productos es undefined temporalmente
         setDisplayList(Array.isArray(productos) ? productos : []);
-        setNewItemProductoData({ Producto_id: '', Cantidad: '', Precio_Unitario_Venta: '', codigo: '', Descripcion: '' });
+        // Resetear formulario de producto, incluyendo Descuento_Porcentaje
+        setNewItemProductoData({ Producto_id: '', Cantidad: '', Precio_Unitario_Venta: '', Descuento_Porcentaje: '', codigo: '', Descripcion: '' });
+        // Resetear formulario personalizado
         setNewItemCustomData({ Descripcion_Personalizada: '', Cantidad_Personalizada: '', Precio_Unitario_Personalizada: '' });
 
     }, [clearTrigger, productos]); // Dependencias: clearTrigger y productos (para resetear displayList correctamente)
@@ -79,7 +85,9 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
     const handleItemTypeChange = (e) => {
         setItemTypeToAdd(e.target.value);
         // Limpiar los formularios y el estado de búsqueda/errores al cambiar de tipo
-        setNewItemProductoData({ Producto_id: '', Cantidad: '', Precio_Unitario_Venta: '', codigo: '', Descripcion: '' });
+        // Resetear formulario de producto, incluyendo Descuento_Porcentaje
+        setNewItemProductoData({ Producto_id: '', Cantidad: '', Precio_Unitario_Venta: '', Descuento_Porcentaje: '', codigo: '', Descripcion: '' });
+        // Resetear formulario personalizado
         setNewItemCustomData({ Descripcion_Personalizada: '', Cantidad_Personalizada: '', Precio_Unitario_Personalizada: '' });
         setProductSearchTerm(''); // Limpiar el término de búsqueda
          // Asegurar que displayList se resetee a un array, incluso si productos es undefined temporalmente
@@ -88,7 +96,49 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
     };
 
 
-    // --- Handlers para Ítems de Producto de VentaX (Con Filtrado Frontend - Similar a VentaItemsEditor) ---
+    // --- Lógica de Cálculo de Descuento por Cantidad según la Fórmula del usuario (Copiada de VentaItemsEditor) ---
+    const calculateDiscountPercentage = (cantidad) => {
+        const cantidadFloat = parseFloat(cantidad);
+
+        if (isNaN(cantidadFloat) || cantidadFloat <= 0) {
+            return 0;
+        }
+
+        let discountPercentage = 0;
+        if (cantidadFloat >= 50) {
+            discountPercentage = 12;
+        } else if (cantidadFloat >= 25) {
+            discountPercentage = 10;
+        } else if (cantidadFloat >= 10) {
+            discountPercentage = 5;
+        } else if (cantidadFloat >= 1) {
+             discountPercentage = 0;
+        } else {
+             return 0;
+        }
+
+        return discountPercentage;
+    };
+
+    // --- Lógica de Cálculo de Total del Ítem con Descuento (Copiada de VentaItemsEditor) ---
+     const calculateTotalItem = (cantidad, precioUnitario, descuentoPorcentaje) => {
+         const cantidadFloat = parseFloat(cantidad);
+         const precioUnitarioFloat = parseFloat(precioUnitario);
+         const descuentoFloat = parseFloat(descuentoPorcentaje) || 0;
+
+         const subtotal = (isNaN(cantidadFloat) || cantidadFloat < 0 || isNaN(precioUnitarioFloat) || precioUnitarioFloat < 0)
+                           ? 0
+                           : cantidadFloat * precioUnitarioFloat;
+
+         const effectiveDescuento = Math.max(0, Math.min(100, descuentoFloat));
+
+         const totalItem = subtotal * (1 - effectiveDescuento / 100);
+
+         return parseFloat(totalItem.toFixed(2));
+     };
+
+
+    // --- Handlers para Ítems de Producto de VentaX (Con Filtrado Frontend) ---
 
     // Maneja cambios en el input de búsqueda/filtro de producto
     const handleProductSearchInputChange = (e) => {
@@ -119,44 +169,81 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
             codigo: '', // Limpiar detalles del producto seleccionado
             Descripcion: '',
             // Mantener Cantidad y Precio_Unitario_Venta si ya estaban ingresados para facilitar re-selección
+            // Mantener Descuento_Porcentaje también (se recalculará si cambia cantidad)
         }));
          setItemError(null); // Limpiar errores al empezar a escribir
     };
 
     // Maneja la selección de un producto de la lista mostrada (filtrada o completa)
-    // Adaptado para funcionar con la tabla filtrable
+    // Adaptado para funcionar con la tabla filtrable e incluir lógica de descuento inicial
     const handleProductSelect = (product) => {
-        console.log('Product selected from list:', product);
-        // Rellenar el estado con los detalles del producto seleccionado
+        console.log('[VentaItemsEditorX] Product selected from list:', product);
+
+        // Obtener el precio de venta inicial del producto seleccionado
+        const initialPrecioVenta = product.precio !== null && product.precio !== undefined
+                                    ? parseFloat(product.precio)
+                                    : '';
+
+        // Establecer una cantidad por defecto inicial para calcular el descuento
+        const defaultCantidad = 1; // Puedes ajustar este valor inicial si es necesario
+        const cantidadFloat = parseFloat(defaultCantidad);
+
+        // Calcular el descuento inicial basado en la cantidad por defecto usando la fórmula
+        const defaultDiscount = calculateDiscountPercentage(cantidadFloat);
+
+        // --- DEBUG LOG ---
+        console.log(`[VentaItemsEditorX - DEBUG] Producto seleccionado. Cantidad inicial por defecto: ${defaultCantidad}, Descuento calculado por fórmula: ${defaultDiscount}`);
+        // --- END DEBUG LOG ---
+
+
+        // Rellenar el estado con los detalles del producto seleccionado y valores iniciales (incluyendo descuento por defecto)
         setNewItemProductoData(prevState => ({
             ...prevState,
             Producto_id: product.id, // Establecer el ID del producto seleccionado
             codigo: product.codigo || '', // Rellenar código y descripción
             Descripcion: product.Descripcion || '',
             // Usar el precio del producto seleccionado, convertir a string para el input type="number"
-            Precio_Unitario_Venta: product.precio !== null ? String(product.precio) : '',
-            Cantidad: '', // Limpiar cantidad para nueva entrada (es un nuevo ítem)
+            Precio_Unitario_Venta: initialPrecioVenta !== '' ? String(initialPrecioVenta) : '',
+            Cantidad: String(defaultCantidad), // Establecer cantidad por defecto inicial
+            Descuento_Porcentaje: String(defaultDiscount), // Establecer descuento calculado por defecto inicial
         }));
         // Establecer el valor del input de búsqueda/filtro con el código y descripción del producto seleccionado
-        // Esto es útil visualmente para confirmar la selección
         setProductSearchTerm(`${product.codigo || ''} - ${product.Descripcion || ''}`);
-        // Opcional: Limpiar la lista mostrada después de seleccionar (para que no se vea la tabla)
-        // setDisplayList([]); // Si descomentas esto, la tabla de productos se ocultará al seleccionar
          setItemError(null); // Limpiar errores de ítems al seleccionar
     };
 
 
-    // Maneja cambios en los campos Cantidad y Precio Unitario Venta para el nuevo ítem de producto
+    // Maneja cambios en los campos Cantidad, Precio Unitario Venta y Descuento_Porcentaje para el nuevo ítem de producto
     const handleNewItemProductoDetailChange = (e) => {
         const { name, value } = e.target;
          let updatedValue = value;
 
-         if (['Cantidad', 'Precio_Unitario_Venta'].includes(name)) {
-              // Parsear a número o dejar vacío. La validación final a número se hace en handleAddItem
+         // Parsear a número o dejar vacío para campos numéricos
+         if (['Cantidad', 'Precio_Unitario_Venta', 'Descuento_Porcentaje'].includes(name)) {
               updatedValue = value !== '' ? parseFloat(value) : '';
          }
 
-         setNewItemProductoData(prevState => ({ ...prevState, [name]: updatedValue }));
+         setNewItemProductoData(prevState => {
+             const updatedState = { ...prevState, [name]: updatedValue };
+
+              // Si cambia la Cantidad, recalcular el Descuento Porcentaje por defecto
+              if (name === 'Cantidad') {
+                   const cantidadFloat = parseFloat(updatedState.Cantidad);
+                   const defaultDiscount = calculateDiscountPercentage(cantidadFloat);
+                   // Esto sobreescribirá cualquier descuento manual previo al cambiar la cantidad
+                   updatedState.Descuento_Porcentaje = String(defaultDiscount); // Actualiza el estado del descuento
+
+                   // --- DEBUG LOG ---
+                   console.log(`[VentaItemsEditorX - DEBUG] handleNewItemProductoDetailChange: Cantidad cambiada a ${updatedState.Cantidad}. Descuento calculado por fórmula: ${defaultDiscount}. Estado Descuento_Porcentaje actualizado a: ${updatedState.Descuento_Porcentaje}`);
+                   // --- END DEBUG LOG ---
+              }
+               // --- DEBUG LOG ---
+               console.log(`[VentaItemsEditorX - DEBUG] handleNewItemProductoDetailChange: Campo ${name} cambiado a "${value}". Estado Descuento_Porcentaje es ahora: "${updatedState.Descuento_Porcentaje}"`);
+               // --- END DEBUG LOG ---
+
+
+             return updatedState;
+         });
          setItemError(null); // Limpiar errores al cambiar estos campos
     };
 
@@ -178,11 +265,12 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
 
 
     // --- Handler para Agregar Ítem (Común para ambos tipos) ---
+    // Lógica ajustada para determinar el Descuento_Porcentaje final para ítems de producto
     const handleAddItem = () => {
         setItemError(null); // Reset previous errors for the current add attempt
 
         let newItem = null;
-        let totalItem = 0;
+        let totalItem = 0; // Inicializar totalItem
 
         if (itemTypeToAdd === 'product') {
             // Validaciones para ítem de producto (Mantenemos estas validaciones)
@@ -192,77 +280,127 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                 return;
             }
             // Validar Cantidad
-            if (newItemProductoData.Cantidad === '' || isNaN(parseFloat(newItemProductoData.Cantidad)) || parseFloat(newItemProductoData.Cantidad) <= 0) {
+            const cantidad = parseFloat(newItemProductoData.Cantidad);
+            if (newItemProductoData.Cantidad === '' || isNaN(cantidad) || cantidad <= 0) {
                 setItemError('Debe ingresar una cantidad válida (> 0) para el producto seleccionado.');
                 return;
             }
              // Validar Precio Unitario
-             if (newItemProductoData.Precio_Unitario_Venta === '' || isNaN(parseFloat(newItemProductoData.Precio_Unitario_Venta)) || parseFloat(newItemProductoData.Precio_Unitario_Venta) < 0) {
+             const precioUnitario = parseFloat(newItemProductoData.Precio_Unitario_Venta);
+             if (newItemProductoData.Precio_Unitario_Venta === '' || isNaN(precioUnitario) || precioUnitario < 0) {
                   setItemError('Debe ingresar un precio unitario de venta válido (>= 0) para el producto seleccionado.');
                   return;
              }
 
+             // --- Lógica ajustada para determinar el Descuento_Porcentaje final para el item de PRODUCTO ---
+             const stateDescuentoValue = parseFloat(newItemProductoData.Descuento_Porcentaje);
+             const formulaCalculatedDiscount = calculateDiscountPercentage(cantidad);
 
-             // Calcular Total_Item para producto
-             const cantidad = parseFloat(newItemProductoData.Cantidad) || 0; // Usar || 0 para evitar NaN * Number = NaN
-             const precioUnitario = parseFloat(newItemProductoData.Precio_Unitario_Venta) || 0; // Usar || 0
-             totalItem = (cantidad * precioUnitario); // Calculate raw total
+             let finalDescuentoPorcentaje;
+
+             // Si el valor en el estado del Descuento_Porcentaje (del input) es un número válido
+             if (newItemProductoData.Descuento_Porcentaje !== '' && !isNaN(stateDescuentoValue)) {
+                 // Usamos el valor del estado (permite override manual)
+                 finalDescuentoPorcentaje = stateDescuentoValue;
+                  // Validación para el valor manual
+                 if (finalDescuentoPorcentaje < 0 || finalDescuentoPorcentaje > 100) {
+                      setItemError('El descuento debe ser un número válido entre 0 y 100.');
+                      return;
+                 }
+             } else {
+                 // Si el estado está vacío o NaN, usamos el descuento calculado por fórmula
+                 finalDescuentoPorcentaje = formulaCalculatedDiscount;
+             }
+             // --- Fin Lógica ajustada ---
+
+
+             // --- DEBUG LOG ---
+             console.log(`[VentaItemsEditorX - DEBUG] handleAddItem: Determinando descuento final para item de producto.`);
+             console.log(`[VentaItemsEditorX - DEBUG] Estado Descuento_Porcentaje: "${newItemProductoData.Descuento_Porcentaje}" (parseado: ${stateDescuentoValue})`);
+             console.log(`[VentaItemsEditorX - DEBUG] Descuento calculado por fórmula para cantidad ${cantidad}: ${formulaCalculatedDiscount}`);
+             console.log(`[VentaItemsEditorX - DEBUG] Descuento final a usar para el ítem: ${finalDescuentoPorcentaje}`);
+             // --- END DEBUG LOG ---
+
+
+             // Calcular Total_Item para producto CON descuento
+             totalItem = calculateTotalItem(cantidad, precioUnitario, finalDescuentoPorcentaje); // Calculate total using the final discount
+              if (isNaN(totalItem)) {
+                  setItemError('Error al calcular el Total del Ítem. Revise los valores.');
+                  return;
+              }
+
 
             newItem = {
                 // Estructura del item a agregar al array 'items' en el estado padre
                 type: 'product', // Identificar el tipo de ítem
                 Producto_id: parseInt(newItemProductoData.Producto_id), // ID del producto seleccionado
-                Cantidad: cantidad,
-                Precio_Unitario_Venta: precioUnitario,
-                Total_Item: parseFloat(totalItem.toFixed(2)), // Agregar el Total_Item calculado
+                Cantidad: cantidad, // Cantidad ya parseada
+                Precio_Unitario_Venta: precioUnitario, // Precio unitario ya parseado (ANTES del descuento)
+                Descuento_Porcentaje: finalDescuentoPorcentaje, // AÑADIMOS el Descuento_Porcentaje final
+                Total_Item: totalItem, // AGREGAMOS el Total_Item calculado CON descuento
 
-                // Incluir detalles para mostrarlos en la tabla (si no se buscan al renderizar la tabla)
+                // Incluir detalles para mostrarlos en la tabla
                  codigo: newItemProductoData.codigo, // Usar el código del estado (obtenido al seleccionar)
                  Descripcion: newItemProductoData.Descripcion, // Usar la descripción del estado (obtenida al seleccionar)
             };
 
-             // Resetear el formulario de nuevo ítem de producto
-            setNewItemProductoData({ Producto_id: '', Cantidad: '', Precio_Unitario_Venta: '', codigo: '', Descripcion: '' });
+             // --- DEBUG LOG ---
+             console.log('[VentaItemsEditorX - DEBUG] handleAddItem: Objeto newItem (producto) creado:', newItem);
+             // --- END DEBUG LOG ---
+
+             // Resetear el formulario de nuevo ítem de producto, incluyendo Descuento_Porcentaje
+            setNewItemProductoData({ Producto_id: '', Cantidad: '', Precio_Unitario_Venta: '', Descuento_Porcentaje: '', codigo: '', Descripcion: '' });
             setProductSearchTerm(''); // Limpiar el input de búsqueda/filtro
             // Asegurar que displayList se resetee a un array, incluso si productos es undefined temporalmente
             setDisplayList(Array.isArray(productos) ? productos : []);
 
 
         } else { // itemTypeToAdd === 'custom'
-             // --- VALIDACIONES ELIMINADAS PARA ITEM PERSONALIZADO ---
-             // if (!newItemCustomData.Descripcion_Personalizada) {
-             //     setItemError('Debe ingresar una descripción para el ítem personalizado.');
-             //     return;
-             // }
-             // if (newItemCustomData.Cantidad_Personalizada === '' || isNaN(parseFloat(newItemCustomData.Cantidad_Personalizada)) || parseFloat(newItemCustomData.Cantidad_Personalizada) <= 0) {
-             //     setItemError('Debe ingresar una cantidad válida (> 0) para el ítem personalizado.');
-             //     return;
-             // }
-             // if (newItemCustomData.Precio_Unitario_Personalizada === '' || isNaN(parseFloat(newItemCustomData.Precio_Unitario_Personalizada)) || parseFloat(newItemCustomData.Precio_Unitario_Personalizada) < 0) {
-             //      setItemError('Debe ingresar un precio unitario válido (>= 0) para el ítem personalizado.');
-             //      return;
-             // }
-             // --- FIN VALIDACIONES ELIMINADAS ---
+             // Validaciones para ítem personalizado (manteniendo validaciones frontales)
+             const descripcionPersonalizada = newItemCustomData.Descripcion_Personalizada;
+             const cantidadPersonalizada = parseFloat(newItemCustomData.Cantidad_Personalizada);
+             const precioUnitarioPersonalizada = parseFloat(newItemCustomData.Precio_Unitario_Personalizada);
+
+             if (!descripcionPersonalizada) {
+                 setItemError('Debe ingresar una descripción para el ítem personalizado.');
+                 return;
+             }
+             if (newItemCustomData.Cantidad_Personalizada === '' || isNaN(cantidadPersonalizada) || cantidadPersonalizada <= 0) {
+                 setItemError('Debe ingresar una cantidad válida (> 0) para el ítem personalizado.');
+                 return;
+             }
+             if (newItemCustomData.Precio_Unitario_Personalizada === '' || isNaN(precioUnitarioPersonalizada) || precioUnitarioPersonalizada < 0) {
+                  setItemError('Debe ingresar un precio unitario válido (>= 0) para el ítem personalizado.');
+                  return;
+             }
 
 
-             // Calcular Total_Item para ítem personalizado (Se mantiene el cálculo aunque no se valide)
-             const cantidadPersonalizada = parseFloat(newItemCustomData.Cantidad_Personalizada) || 0;
-             const precioUnitarioPersonalizada = parseFloat(newItemCustomData.Precio_Unitario_Personalizada) || 0;
+             // Calcular Total_Item para ítem personalizado (NO incluye descuento por ahora)
              totalItem = (cantidadPersonalizada * precioUnitarioPersonalizada); // Calculate raw total
+              if (isNaN(totalItem)) {
+                  setItemError('Error al calcular el Total del Ítem personalizado. Revise los valores.');
+                  return;
+              }
+
 
              newItem = {
                  type: 'custom', // Identificar el tipo de ítem
-                 Descripcion_Personalizada: newItemCustomData.Descripcion_Personalizada,
-                 Cantidad_Personalizada: cantidadPersonalizada,
-                 Precio_Unitario_Personalizada: precioUnitarioPersonalizada,
-                 Total_Item: parseFloat(totalItem.toFixed(2)), // Agregar el Total_Item calculado
+                 Descripcion_Personalizada: descripcionPersonalizada, // Descripción ya validada
+                 Cantidad_Personalizada: cantidadPersonalizada, // Cantidad ya parseada y validada
+                 Precio_Unitario_Personalizada: precioUnitarioPersonalizada, // Precio unitario ya parseado y validado
+                 Total_Item: parseFloat(totalItem.toFixed(2)), // Agregar el Total_Item calculado (sin descuento)
+                 // Descuento_Porcentaje: 0, // Opcional: agregar 0% de descuento para consistencia si se manejara en backend
              };
+              // --- DEBUG LOG ---
+             console.log('[VentaItemsEditorX - DEBUG] handleAddItem: Objeto newItem (personalizado) creado:', newItem);
+             // --- END DEBUG LOG ---
+
 
              // Resetear el formulario de nuevo ítem personalizado
              setNewItemCustomData({ Descripcion_Personalizada: '', Cantidad_Personalizada: '', Precio_Unitario_Personalizada: '' });
         }
 
-        console.log('[VentaItemsEditorX] Nuevo item creado:', newItem);
+        console.log('[VentaItemsEditorX] Nuevo item final agregado a la lista y enviado al padre:', newItem);
         // Notificar al padre que la lista de ítems ha cambiado
         // Añadir comprobación de seguridad: solo si items es un array
         if (Array.isArray(items)) {
@@ -274,7 +412,7 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
         }
 
 
-        setItemError(null); // Limpiar errores si la adición fue exitosa
+        setItemError(null); // Limpiar errores si la adición fue exitosa (a menos que se establezca un error arriba)
     };
 
 
@@ -324,14 +462,22 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
 
     // --- Renderizado ---
 
+    // Calcular el Total Ítem para mostrar en tiempo real en el formulario de "Agregar Ítem Producto"
+    // Usamos los valores del estado del nuevo ítem de producto
+     const currentItemTotalProducto = calculateTotalItem(
+         newItemProductoData.Cantidad,
+         newItemProductoData.Precio_Unitario_Venta,
+         newItemProductoData.Descuento_Porcentaje // Usa el valor actual en el estado para el cálculo en tiempo real
+     );
+
+     // Calcular el Total Ítem para mostrar en tiempo real en el formulario de "Agregar Ítem Personalizado"
+      const currentItemTotalCustom = parseFloat(parseFloat(newItemCustomData.Cantidad_Personalizada || 0) * parseFloat(newItemCustomData.Precio_Unitario_Personalizada || 0)).toFixed(2);
+
+
     return (
         <>
             {/* Mostrar errores específicos de ítems */}
             {itemError && <p style={{ color: '#ef9a9a' }}>{itemError}</p>}
-
-            {/* No necesitamos estado de carga de búsqueda si el filtro es frontend */}
-            {/* {loadingSearch && <p>Buscando productos...</p>} */}
-
 
             {/* --- Sección para Agregar Nuevo Ítem de VentaX --- */}
             <div style={{ marginTop: '30px', borderTop: '1px solid #424242', paddingTop: '20px' }}>
@@ -346,12 +492,12 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                     </select>
                 </div>
 
-                {/* Formulario para agregar ítem de producto (Condicional - Con Filtrado Frontend) */}
+                {/* Formulario para agregar ítem de producto (Condicional - Con Filtrado Frontend y Descuento) */}
                 {itemTypeToAdd === 'product' && (
                     // Usamos key para forzar re-render si cambia el itemTypeToAdd, limpiando el estado interno
-                    <div key="add-product-item-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'flex-end' }}>
+                    <div key="add-product-item-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                          {/* Input de búsqueda/filtro */}
-                         <div style={{ flex: 2 }}>
+                         <div style={{ flexBasis: '300px', flexGrow: 1 }}>
                              <label htmlFor="product-search-input">Buscar/Filtrar Producto:</label>
                              <input
                                  type="text"
@@ -363,16 +509,16 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                              />
                          </div>
 
-                         {/* Mostrar detalles del producto SELECCIONADO */}
+                         {/* Mostrar detalles del producto SELECCIONADO y campos */}
                          {/* Mostrar solo si un producto ha sido seleccionado (tiene Producto_id) */}
                          {newItemProductoData.Producto_id ? (
                              <>
-                                  <div style={{ flex: 2, fontSize: '0.9rem', color: '#bdbdbd', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                                  <div style={{ flexBasis: '300px', flexGrow: 1, fontSize: '0.9rem', color: '#bdbdbd', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
                                      {/* Mostrar código y descripción del producto seleccionado */}
                                       <p style={{margin: 0}}><strong>Seleccionado:</strong></p>
                                       <p style={{margin: 0}}>{newItemProductoData.codigo} - {newItemProductoData.Descripcion}</p>
                                   </div>
-                                  <div style={{ flex: 1 }}>
+                                  <div style={{ flexBasis: '80px', flexGrow: 0 }}>
                                      <label htmlFor="item-producto-cantidad">Cantidad:</label>
                                      <input
                                          type="number"
@@ -386,8 +532,8 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                          required
                                      />
                                  </div>
-                                 <div style={{ flex: 1 }}>
-                                     <label htmlFor="item-producto-precio">Precio Unitario Venta:</label>
+                                 <div style={{ flexBasis: '100px', flexGrow: 0 }}>
+                                     <label htmlFor="item-producto-precio">Precio Unitario:</label> {/* Este es el precio SIN descuento */}
                                      <input
                                          type="number"
                                          id="item-producto-precio"
@@ -400,19 +546,34 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                          required
                                      />
                                  </div>
-                                  <div style={{ flex: 0.5 }}>
-                                      <label>Total Ítem:</label>
-                                       {/* Calcular Total Ítem basado en los valores actuales de Cantidad y Precio Unitario */}
+                                  {/* Campo Descuento (%) */}
+                                  <div style={{ flexBasis: '80px', flexGrow: 0 }}>
+                                      <label htmlFor="item-producto-descuento">Descuento (%):</label>
                                       <input
-                                          type="text"
-                                           value={parseFloat(parseFloat(newItemProductoData.Cantidad || 0) * parseFloat(newItemProductoData.Precio_Unitario_Venta || 0)).toFixed(2)}
-                                          readOnly
-                                          disabled={true}
-                                           style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }}
+                                          type="number"
+                                          id="item-producto-descuento"
+                                          name="Descuento_Porcentaje"
+                                          value={newItemProductoData.Descuento_Porcentaje}
+                                          onChange={handleNewItemProductoDetailChange}
+                                          disabled={savingData}
+                                          min="0"
+                                          max="100"
+                                          step="0.01"
                                       />
                                   </div>
-                                   {/* Botón Agregar Producto - Solo si se ha seleccionado Y campos válidos */}
-                                   <div>
+                                   {/* Total Ítem (Calculado incluyendo descuento) */}
+                                   <div style={{ flexBasis: '100px', flexGrow: 0 }}>
+                                       <label>Total Ítem:</label>
+                                       <input
+                                           type="text"
+                                            value={isNaN(currentItemTotalProducto) ? 'N/A' : currentItemTotalProducto.toFixed(2)}
+                                           readOnly
+                                           disabled={true}
+                                            style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }}
+                                       />
+                                   </div>
+                                    {/* Botón Agregar Producto - Solo si se ha seleccionado Y campos válidos */}
+                                   <div style={{ flexBasis: 'auto', flexGrow: 0, alignSelf: 'flex-end' }}>
                                      <button
                                          type="button"
                                          onClick={handleAddItem}
@@ -420,7 +581,10 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                               savingData ||
                                               !newItemProductoData.Producto_id || // Debe tener un producto seleccionado
                                               newItemProductoData.Cantidad === '' || isNaN(parseFloat(newItemProductoData.Cantidad)) || parseFloat(newItemProductoData.Cantidad) <= 0 || // Validar Cantidad
-                                              newItemProductoData.Precio_Unitario_Venta === '' || isNaN(parseFloat(newItemProductoData.Precio_Unitario_Venta)) || parseFloat(newItemProductoData.Precio_Unitario_Venta) < 0 // Validar Precio
+                                              newItemProductoData.Precio_Unitario_Venta === '' || isNaN(parseFloat(newItemProductoData.Precio_Unitario_Venta)) || parseFloat(newItemProductoData.Precio_Unitario_Venta) < 0 || // Validar Precio Unitario
+                                              // Validar el campo de descuento (incluso si está vacío, el parse float lo manejará, pero validamos rango si tiene valor)
+                                              (newItemProductoData.Descuento_Porcentaje !== '' && (isNaN(parseFloat(newItemProductoData.Descuento_Porcentaje)) || parseFloat(newItemProductoData.Descuento_Porcentaje) < 0 || parseFloat(newItemProductoData.Descuento_Porcentaje) > 100)) ||
+                                               isNaN(currentItemTotalProducto) // Validar que el cálculo del total no sea NaN
                                           }
                                       >
                                          Agregar Producto a VentaX
@@ -436,10 +600,10 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                     </div>
                 )}
 
-                {/* Formulario para agregar ítem personalizado (Condicional - SIN VALIDACION FRONTAL) */}
+                {/* Formulario para agregar ítem personalizado (Condicional - SIN Descuento en este ejemplo) */}
                 {itemTypeToAdd === 'custom' && (
-                     <div key="add-custom-item-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'flex-end' }}>
-                         <div style={{ flex: 3 }}>
+                     <div key="add-custom-item-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                         <div style={{ flexBasis: '300px', flexGrow: 1 }}>
                              <label htmlFor="item-custom-descripcion">Descripción:</label>
                              <input
                                  type="text"
@@ -448,11 +612,10 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                  value={newItemCustomData.Descripcion_Personalizada}
                                  onChange={handleNewItemCustomChange}
                                  disabled={savingData}
-                                 // Eliminado el atributo 'required'
-                                 // required
+                                  required // Mantener validación frontal para descripción
                              />
                          </div>
-                         <div style={{ flex: 1 }}>
+                         <div style={{ flexBasis: '80px', flexGrow: 0 }}>
                              <label htmlFor="item-custom-cantidad">Cantidad:</label>
                              <input
                                  type="number"
@@ -463,11 +626,10 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                  disabled={savingData}
                                  min="0"
                                  step="any"
-                                 // Eliminado el atributo 'required'
-                                 // required
+                                  required // Mantener validación frontal para cantidad
                              />
                          </div>
-                         <div style={{ flex: 1 }}>
+                         <div style={{ flexBasis: '100px', flexGrow: 0 }}>
                              <label htmlFor="item-custom-precio">Precio Unitario:</label>
                              <input
                                  type="number"
@@ -478,25 +640,32 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                  disabled={savingData}
                                  min="0"
                                  step="0.01"
-                                 // Eliminado el atributo 'required'
-                                 // required
+                                  required // Mantener validación frontal para precio unitario
                              />
                          </div>
-                           <div style={{ flex: 0.5 }}>
+                           {/* Total Ítem para personalizados (sin descuento en este ejemplo) */}
+                           <div style={{ flexBasis: '100px', flexGrow: 0 }}>
                                <label>Total Ítem:</label>
-                               {/* Calcular Total Ítem basado en los valores actuales de Cantidad y Precio Unitario */}
                                <input
                                    type="text"
-                                   value={parseFloat(parseFloat(newItemCustomData.Cantidad_Personalizada || 0) * parseFloat(newItemCustomData.Precio_Unitario_Personalizada || 0)).toFixed(2)}
+                                   value={currentItemTotalCustom} // Usamos el cálculo directo aquí
                                    readOnly
                                    disabled={true}
                                     style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }}
                                />
                            </div>
-                         <div>
-                             {/* El botón de agregar ítem personalizado ya no tiene validaciones frontales */}
-                             {/* Se habilita si no se está guardando */}
-                             <button type="button" onClick={handleAddItem} disabled={savingData}>
+                         <div style={{ flexBasis: 'auto', flexGrow: 0, alignSelf: 'flex-end' }}>
+                             {/* Botón Agregar Ítem Personalizado - Ahora con validaciones frontales */}
+                             <button
+                                 type="button"
+                                 onClick={handleAddItem}
+                                 disabled={
+                                     savingData ||
+                                     !newItemCustomData.Descripcion_Personalizada || // Validar descripción
+                                     newItemCustomData.Cantidad_Personalizada === '' || isNaN(parseFloat(newItemCustomData.Cantidad_Personalizada)) || parseFloat(newItemCustomData.Cantidad_Personalizada) <= 0 || // Validar cantidad
+                                     newItemCustomData.Precio_Unitario_Personalizada === '' || isNaN(parseFloat(newItemCustomData.Precio_Unitario_Personalizada)) || parseFloat(newItemCustomData.Precio_Unitario_Personalizada) < 0 // Validar precio
+                                 }
+                             >
                                  Agregar Ítem Personalizado a VentaX
                              </button>
                          </div>
@@ -507,7 +676,7 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
             </div>
 
 
-            {/* --- Lista de Productos para Seleccionar (Filtrada por el input - Similar a VentaItemsEditor) --- */}
+            {/* --- Lista de Productos para Seleccionar (Filtrada por el input) --- */}
             {/* Mostrar esta lista solo si se está agregando un ítem de producto */}
             {itemTypeToAdd === 'product' && (
                  <div style={{ marginTop: '20px' }}>
@@ -564,7 +733,7 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
             {/* --- Fin Lista de Productos para Seleccionar --- */}
 
 
-            {/* Tabla de Ítems de la VentaX */}
+            {/* Tabla de Ítems de la VentaX (Ítems agregados) */}
             <div style={{ marginTop: '20px' }}>
                 <h4>Lista de Ítems Vendidos (Venta X)</h4> {/* Updated UI text */}
                 {/* Añadir comprobación de seguridad antes de acceder a length */}
@@ -575,8 +744,9 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                 <th>Tipo</th> {/* Nueva columna para indicar el tipo */}
                                 <th>Detalle</th> {/* Columna para mostrar código/descripción */}
                                 <th>Cantidad</th>
-                                <th>Precio Unitario</th>
-                                <th>Total Ítem</th>
+                                <th>Precio Unitario</th> {/* Precio antes de descuento */}
+                                <th>Descuento (%)</th> {/* COLUMNA DE DESCUENTO */}
+                                <th>Total Ítem</th> {/* Precio después de descuento */}
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -589,10 +759,16 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                     ? productos.find(p => p.id === item.Producto_id)
                                     : null;
 
-                                // Safely access numerical values
-                                const cantidad = item.type === 'product' ? item.Cantidad : item.Cantidad_Personalizada;
-                                const precioUnitario = item.type === 'product' ? item.Precio_Unitario_Venta : item.Precio_Unitario_Personalizada;
-                                const totalItem = item.Total_Item; // Total_Item is already calculated and stored
+                                // --- OBTENER VALORES PARA MOSTRAR EN LA TABLA ---
+                                // Usar los valores del item tal cual vienen del estado (ya calculados/determinados al agregarlos)
+                                const displayCantidad = item.type === 'product' ? item.Cantidad : item.Cantidad_Personalizada;
+                                const displayPrecioUnitario = item.type === 'product' ? item.Precio_Unitario_Venta : item.Precio_Unitario_Personalizada;
+                                const displayDescuento = item.type === 'product' && item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== null
+                                                        ? item.Descuento_Porcentaje // Usar el descuento guardado en el estado del ítem
+                                                        : null; // Ítems personalizados no tienen descuento por ahora
+
+                                // El Total_Item ya está calculado y almacenado en el ítem cuando se agregó/editó.
+                                const displayTotalItem = item.Total_Item;
 
                                 return (
                                     // Usar el id del ítem si existe (al editar), sino el index
@@ -608,14 +784,21 @@ function VentaItemsEditorX({ items, onItemsChange, productos, savingData, clearT
                                         </td>
                                         <td>
                                              {/* Display cantidad safely */}
-                                            {cantidad !== null && cantidad !== undefined && !isNaN(parseFloat(cantidad)) ? parseFloat(cantidad) : 'N/A'}
+                                            {displayCantidad !== null && displayCantidad !== undefined && !isNaN(parseFloat(displayCantidad)) ? parseFloat(displayCantidad) : 'N/A'}
                                         </td>
                                         <td>
                                              {/* Display precio unitario safely */}
-                                            {precioUnitario !== null && precioUnitario !== undefined && !isNaN(parseFloat(precioUnitario)) ? parseFloat(precioUnitario).toFixed(2) : 'N/A'}
+                                            {displayPrecioUnitario !== null && displayPrecioUnitario !== undefined && !isNaN(parseFloat(displayPrecioUnitario)) ? parseFloat(displayPrecioUnitario).toFixed(2) : 'N/A'}
                                         </td>
-                                        {/* Mostrar Total_Item (es común a ambos tipos) - Safely access and format */}
-                                        <td>{totalItem !== null && totalItem !== undefined && !isNaN(parseFloat(totalItem)) ? parseFloat(totalItem).toFixed(2) : 'N/A'}</td>
+                                        {/* Mostrar Descuento (%) - Usar el valor guardado en el estado del ítem */}
+                                        <td>
+                                             {item.type === 'product'
+                                                 ? (displayDescuento !== null && displayDescuento !== undefined && !isNaN(parseFloat(displayDescuento)) ? parseFloat(displayDescuento).toFixed(2) : '0.00')
+                                                 : 'N/A' // N/A para ítems personalizados sin descuento
+                                             }
+                                        </td>
+                                        {/* Mostrar Total_Item (es común a ambos tipos) - Usar el valor guardado en el estado del ítem - Safely access and format */}
+                                        <td>{displayTotalItem !== null && displayTotalItem !== undefined && !isNaN(parseFloat(displayTotalItem)) ? parseFloat(displayTotalItem).toFixed(2) : 'N/A'}</td>
                                         <td>
                                             <button
                                                 type="button"
