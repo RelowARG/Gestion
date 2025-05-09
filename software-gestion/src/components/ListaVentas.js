@@ -1,4 +1,4 @@
-// ListaVentas.js (Modified for Backend Auto-Generated Fact Nro, Date Formatting, and Edit Fix)
+// ListaVentas.js (Modified for Backend Auto-Generated Fact Nro, Date Formatting, and Edit Fix, and Clear Trigger)
 import React, { useState, useEffect } from 'react';
 import VentaItemsEditor from './ventas/VentaItemsEditor'; // Import the modified component
 import ImportPresupuestoModal from './ventas/ImportPresupuestoModal'; // Import the new modal component
@@ -54,6 +54,9 @@ function ListaVentas() {
   const [showAddForm, setShowAddForm] = useState(false);
   // New state to control visibility of the Import Presupuesto modal
   const [showImportModal, setShowImportModal] = useState(false);
+
+  // NUEVO estado para disparar la limpieza de errores en VentaItemsEditor
+  const [clearItemsEditorErrorsTrigger, setClearItemsEditorErrorsTrigger] = useState(0);
 
 
   // NUEVO: Función async para obtener las últimas ventas
@@ -160,7 +163,7 @@ function ListaVentas() {
            // If the already selected row is clicked again, deselect it
            setSelectedVentaId(null);
            setEditingVentaId(null); // Close edit form if open for this row
-            // Reset edited data structure with dolar fields
+            // Reset edited data structure with new DB column names, including dolar fields
            setEditedVentaData({
                id: null, Fecha: '', Fact_Nro: '', Cliente_id: '',
                Estado: '', Pago: '', Subtotal: '', IVA: '', Total: '',
@@ -264,7 +267,7 @@ function ListaVentas() {
    };
 
     // NEW useEffect to recalculate totals when items, IVA, or Cotizacion_Dolar change in the ADD form
-    // Modified to calculate Total ARS (Keep this)
+    // Modified to calculate Total ARS (Keep this logic)
     useEffect(() => {
         // Only run this effect when the add form is visible
         if (showAddForm) {
@@ -319,6 +322,11 @@ function ListaVentas() {
       e.preventDefault();
       setSavingData(true);
       setError(null);
+
+      // NUEVO: Disparar la limpieza de errores en el VentaItemsEditor antes de validar y enviar
+      setClearItemsEditorErrorsTrigger(prev => prev + 1);
+      console.log('[ListaVentas] Disparando clearItemsEditorErrorsTrigger:', clearItemsEditorErrorsTrigger + 1);
+
 
       // Removed Fact_Nro from validation
       if (!newVentaData.Fecha || !newVentaData.Cliente_id || !newVentaData.Estado || !newVentaData.Pago || !Array.isArray(newVentaData.items) || newVentaData.items.length === 0 || newVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(newVentaData.Cotizacion_Dolar)) || parseFloat(newVentaData.Cotizacion_Dolar) <= 0) {
@@ -558,7 +566,7 @@ function ListaVentas() {
                updatedState.Total = ''; // Clear total USD if subtotal or IVA is empty
            }
 
-            // Recalculate Total ARS based on the (potentially updated) Total USD and current Cotizacion_Dolar
+            // Recalculate Total ARS based on the new Total USD and current Cotizacion_Dolar
             const cotizacion = parseFloat(updatedState.Cotizacion_Dolar);
             if (updatedState.Total !== '' && !isNaN(parseFloat(updatedState.Total)) && !isNaN(cotizacion) && cotizacion > 0) {
                  updatedState.Total_ARS = (parseFloat(updatedState.Total) * cotizacion).toFixed(2); // Total ARS
@@ -748,12 +756,16 @@ function ListaVentas() {
          // Re-fetch clients and products just in case for the dropdowns
          fetchClients();
          fetchProductos();
+        // NUEVO: Reset el trigger al abrir el formulario para que el editor empiece limpio
+        setClearItemsEditorErrorsTrigger(0);
     };
 
     // Handle click on "Cancelar" button in the add form (Keep this)
     const handleCancelAdd = () => {
         setShowAddForm(false);
         setError(null);
+        // NUEVO: Reset el trigger al cancelar para limpiar el editor si se vuelve a abrir
+        setClearItemsEditorErrorsTrigger(0);
     };
 
     // --- Import Presupuesto Functionality --- (Keep this logic)
@@ -1072,6 +1084,8 @@ function ListaVentas() {
                          onItemsChange={handleNewVentaItemsChange}
                          productos={productos}
                          savingData={savingData || loadingEditData || deletingVentaId !== null}
+                         // NUEVO: Pasa el clearTrigger al VentaItemsEditor
+                         clearTrigger={clearItemsEditorErrorsTrigger}
                     />
                      {productos.length === 0 && (loading || loadingEditData) && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos...</p>}
                      {productos.length === 0 && !loading && !loadingEditData && !savingData && <p style={{fontSize: '14px', color: '#ffcc80'}}>No hay productos disponibles. Agregue productos primero.</p>}

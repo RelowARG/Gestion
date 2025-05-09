@@ -1,8 +1,20 @@
-// src/components/ListaProductos.js (Modified for Backend API Communication)
+// src/components/ListaProductos.js (Modified for conditional fields based on Tipo)
 import React, { useState, useEffect } from 'react';
 
 // Acceder a la API expuesta globalmente (ahora usa fetch/async)
 const electronAPI = window.electronAPI;
+
+// Define los tipos de producto y las etiquetas correspondientes para el costo principal
+const PRODUCT_TYPES = [
+    { value: '', label: 'Seleccionar Tipo' }, // Opción por defecto
+    { value: 'Rollo', label: 'Rollo', costLabel: 'Costo x 1.000' }, // Etiqueta para el campo de entrada que influye en el cálculo de rollo
+    { value: 'Ribbon', label: 'Ribbon', costLabel: 'Costo x Unidad' }, // Etiqueta para el costo directo
+    { value: 'Poliamida', label: 'Poliamida', costLabel: 'Costo x Metros' }, // Etiqueta para el costo directo
+    { value: 'Stickers', label: 'Stickers', costLabel: 'Costo x Plancha' }, // Etiqueta para el costo directo
+    { value: 'Maquina', label: 'Maquina', costLabel: 'Costo x Unidad' }, // Etiqueta para el costo directo
+    // Agrega otros tipos si los hay
+];
+
 
 function ListaProductos() {
   const [productos, setProductos] = useState([]);
@@ -14,30 +26,32 @@ function ListaProductos() {
   const [selectedProductoId, setSelectedProductoId] = useState(null); // Selected row ID
   const [editingProductoId, setEditingProductoId] = useState(null); // ID of product being edited
 
-  // editedProductoData state keys match the new DB column names
+  // editedProductoData state keys match the new DB column names, ADD 'tipo'
   const [editedProductoData, setEditedProductoData] = useState({
       id: null,
       codigo: '',
       Descripcion: '', // New column name
-      eti_x_rollo: '', // New column name
-      costo_x_1000: '', // New column name
-      costo_x_rollo: '', // New column name (stored now)
-      precio: '', // New column name
-      banda: '', // New field
-      material: '', // New field
-      Buje: '', // New field
+      tipo: '', // <-- NUEVO CAMPO
+      eti_x_rollo: '', // New column name - Solo para Rollo
+      costo_x_1000: '', // New column name - Campo de costo principal (etiqueta cambia)
+      costo_x_rollo: '', // New column name (stored now) - Solo para Rollo (calculado)
+      precio: '', // New column name - Común a todos
+      banda: '', // New field - Común a todos
+      material: '', // New field - Común a todos
+      Buje: '', // New field - Común a todos
   });
-  // newProductoData state keys match the new DB column names for sending to backend
+  // newProductoData state keys match the new DB column names for sending to backend, ADD 'tipo'
   const [newProductoData, setNewProductoData] = useState({
     codigo: '',
     Descripcion: '',
-    eti_x_rollo: '',
-    costo_x_1000: '',
-    costo_x_rollo: '', // Will be calculated before sending
-    precio: '',
-    banda: '', // New field
-    material: '', // New field
-    Buje: '', // New field
+    tipo: '', // <-- NUEVO CAMPO
+    eti_x_rollo: '', // Solo para Rollo
+    costo_x_1000: '', // Campo de costo principal (etiqueta cambia)
+    costo_x_rollo: '', // Solo para Rollo (calculado)
+    precio: '', // Común a todos
+    banda: '', // Común a todos
+    material: '', // Común a todos
+    Buje: '', // Común a todos
   });
 
   const [loadingEditData, setLoadingEditData] = useState(false);
@@ -47,29 +61,30 @@ function ListaProductos() {
    // State to control visibility of the add form
    const [showAddForm, setShowAddForm] = useState(false);
 
-   // --- Helper function: Calculate Costo x rollo ---
-   // Defined within the component scope, before it's used in JSX
+   // --- Helper function: Calculate Costo x rollo --- (Solo aplica si tipo es 'Rollo')
    const calculateCostoPorRollo = (costoPorMil, etiPorRollo) => {
-       // The user's formula is (costo x 1000 dividido / 1000)*eti x rollo
-       // This simplifies to costo x 1000 / 1000 * eti x rollo
-       // If costoPorMil is the cost *per 1000 units*, then costoPorMil / 1000 is the cost *per unit*.
-       // Multiplying by etiPorRollo (units per roll) gives the cost *per roll*.
-       // The formula seems to be intended as (costo_x_1000 / 1000) * eti_x_rollo
+       // La fórmula parece ser (costo_x_1000 / 1000) * eti_x_rollo
 
        if (costoPorMil === null || etiPorRollo === null || costoPorMil === '' || etiPorRollo === '') {
-           return 'N/A'; // Cannot calculate if inputs are missing or empty strings
+           return 'N/A'; // No se puede calcular si faltan entradas o son cadenas vacías
        }
 
         const costoPorMilFloat = parseFloat(costoPorMil);
         const etiPorRolloFloat = parseFloat(etiPorRollo);
 
         if (isNaN(costoPorMilFloat) || isNaN(etiPorRolloFloat) || etiPorRolloFloat <= 0) { // Added check for etiPorRolloFloat <= 0
-            return 'N/A'; // Cannot calculate if inputs are not valid numbers or eti is zero/negative
+            return 'N/A'; // No se puede calcular si las entradas no son números válidos o eti es cero/negativo
         }
 
         const costoPorRolloCalc = (costoPorMilFloat / 1000) * etiPorRolloFloat;
-       return costoPorRolloCalc.toFixed(2); // Format to 2 decimal places
+       return costoPorRolloCalc.toFixed(2); // Formato a 2 decimales
    };
+
+    // --- Helper function to get the correct cost label based on type ---
+    const getCostLabel = (typeValue) => {
+        const type = PRODUCT_TYPES.find(t => t.value === typeValue);
+        return type ? type.costLabel : 'Costo'; // Etiqueta por defecto si el tipo no se encuentra o es ''
+    };
 
 
   // Function to fetch products using the new API
@@ -78,9 +93,9 @@ function ListaProductos() {
     setError(null);
     setSelectedProductoId(null);
     setEditingProductoId(null);
-    // Reset edited data structure with expected fetched data (new DB column names)
+    // Reset edited data structure with expected fetched data (new DB column names), ADD 'tipo'
     setEditedProductoData({
-        id: null, codigo: '', Descripcion: '', eti_x_rollo: '',
+        id: null, codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Añadir tipo
         costo_x_1000: '', costo_x_rollo: '', precio: '',
         banda: '', material: '', Buje: '', // Reset new fields
     });
@@ -119,9 +134,9 @@ function ListaProductos() {
        if (selectedProductoId === productoId) {
            setSelectedProductoId(null);
            setEditingProductoId(null);
-            // Reset edited data structure
+            // Reset edited data structure, ADD 'tipo'
            setEditedProductoData({
-               id: null, codigo: '', Descripcion: '', eti_x_rollo: '',
+               id: null, codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Añadir tipo
                costo_x_1000: '', costo_x_rollo: '', precio: '',
                banda: '', material: '', Buje: '', // Reset new fields
            });
@@ -129,9 +144,9 @@ function ListaProductos() {
            setSelectedProductoId(productoId);
            if(editingProductoId !== null && editingProductoId !== productoId) {
                 setEditingProductoId(null);
-                // Reset edited data structure
+                // Reset edited data structure, ADD 'tipo'
                 setEditedProductoData({
-                    id: null, codigo: '', Descripcion: '', eti_x_rollo: '',
+                    id: null, codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Añadir tipo
                     costo_x_1000: '', costo_x_rollo: '', precio: '',
                     banda: '', material: '', Buje: '', // Reset new fields
                 });
@@ -144,34 +159,50 @@ function ListaProductos() {
   // --- Add Producto Functionality ---
   const handleNewProductoInputChange = (e) => {
       const { name, value } = e.target;
-       // Update state with new column names (for properties that directly match DB names)
-       // For UI names that map to different DB names, handle mapping here
+       // Use a temporary variable to calculate based on the potential new value
        let updatedNewProductoData = { ...newProductoData, [name]: value };
 
-       // Optional: Calculate Costo x rollo for display in the form as user types
-       // This calculation uses the values currently in the form state
-       const costoPorMil = updatedNewProductoData.costo_x_1000; // Use string value directly
-       const etiPorRollo = updatedNewProductoData.eti_x_rollo; // Use string value directly
+       // --- Lógica Condicional para CAMPOS y CÁLCULOS según el Tipo ---
+       // Esta lógica se ejecuta cada vez que cambia CUALQUIER campo del formulario
 
-       // Only calculate if both fields have non-empty values
-       if (costoPorMil !== '' && etiPorRollo !== '') {
-           const costoPorMilFloat = parseFloat(costoPorMil);
-           const etiPorRolloFloat = parseFloat(etiPorRollo);
-
-            if (!isNaN(costoPorMilFloat) && !isNaN(etiPorRolloFloat) && etiPorRolloFloat > 0) { // Added check for > 0
-                const costoRollo = (costoPorMilFloat / 1000) * etiPorRolloFloat;
-                 // Update the state with the calculated value (as string for input field)
-                updatedNewProductoData.costo_x_rollo = costoRollo.toFixed(2);
-            } else {
-                 // Clear costo_x_rollo if inputs are invalid or eti is zero/negative
-                 updatedNewProductoData.costo_x_rollo = '';
-            }
-       } else {
-            // Clear costo_x_rollo if either input is empty
-             updatedNewProductoData.costo_x_rollo = '';
+       // Si el campo que cambió es el TIPO, limpia campos relacionados que son específicos de otros tipos
+       if (name === 'tipo') {
+           if (value !== 'Rollo') { // Si el nuevo tipo NO es Rollo, limpia los campos específicos de Rollo
+               updatedNewProductoData.eti_x_rollo = '';
+               updatedNewProductoData.costo_x_rollo = ''; // Limpia el costo calculado
+               // Puedes agregar aquí lógica para limpiar otros campos si fueran específicos de otros tipos
+           } else { // Si el nuevo tipo ES Rollo, limpia campos que podrían ser específicos de otros tipos (si los hubiera)
+               // (Por ahora no hay campos específicos de otros tipos aparte del 'costo_x_1000')
+           }
+           // Cuando cambia el tipo, la etiqueta del costo principal (costo_x_1000) se actualizará automáticamente en el JSX
        }
 
-        setNewProductoData(updatedNewProductoData);
+       // Lógica de cálculo de Costo x rollo: SOLO si el tipo es 'Rollo' y cambian los inputs relevantes
+       if (updatedNewProductoData.tipo === 'Rollo' && (name === 'costo_x_1000' || name === 'eti_x_rollo' || name === 'tipo')) {
+            const costoPorMil = updatedNewProductoData.costo_x_1000;
+            const etiPorRollo = updatedNewProductoData.eti_x_rollo;
+
+            if (costoPorMil !== '' && etiPorRollo !== '') {
+                const costoPorMilFloat = parseFloat(costoPorMil);
+                const etiPorRolloFloat = parseFloat(etiPorRollo);
+
+                 if (!isNaN(costoPorMilFloat) && !isNaN(etiPorRolloFloat) && etiPorRolloFloat > 0) {
+                     const costoRollo = (costoPorMilFloat / 1000) * etiPorRolloFloat;
+                     updatedNewProductoData.costo_x_rollo = costoRollo.toFixed(2); // Actualiza el costo calculado
+                 } else {
+                      updatedNewProductoData.costo_x_rollo = ''; // Limpia si inputs inválidos para Rollo
+                 }
+            } else {
+                 updatedNewProductoData.costo_x_rollo = ''; // Limpia si inputs vacíos para Rollo
+            }
+       } else if (updatedNewProductoData.tipo !== 'Rollo') {
+            // Si el tipo NO es Rollo, asegura que el costo calculado (costo_x_rollo) siempre esté vacío
+            updatedNewProductoData.costo_x_rollo = '';
+       }
+       // --- Fin Lógica Condicional ---
+
+
+        setNewProductoData(updatedNewProductoData); // Actualiza el estado con los cambios y cálculos
   };
 
   const handleAddProductoSubmit = async (e) => { // Make the function async
@@ -179,59 +210,92 @@ function ListaProductos() {
       setSavingData(true);
       setError(null);
 
-      // Basic validation
-      if (!newProductoData.codigo || !newProductoData.Descripcion) {
-           setError('Código y Descripción son campos obligatorios.');
+      // Basic validation, INCLUDE 'tipo'
+      if (!newProductoData.codigo || !newProductoData.Descripcion || !newProductoData.tipo) { // Validate 'tipo' is selected
+           setError('Código, Descripción y Tipo son campos obligatorios.');
            setSavingData(false);
            return;
       }
-       // Validate numerical fields if they are not empty
-       if (newProductoData.eti_x_rollo !== '' && isNaN(parseFloat(newProductoData.eti_x_rollo))) {
-           setError('Eti x rollo debe ser un número válido.');
+
+       // --- Validaciones Condicionales según el Tipo ---
+       // Validar el campo de costo principal (costo_x_1000) usando la etiqueta correcta
+       if (newProductoData.costo_x_1000 !== '' && isNaN(parseFloat(newProductoData.costo_x_1000))) {
+           setError(getCostLabel(newProductoData.tipo) + ' debe ser un número válido.'); // Usa dynamic label in error
            setSavingData(false);
            return;
        }
-        if (newProductoData.costo_x_1000 !== '' && isNaN(parseFloat(newProductoData.costo_x_1000))) {
-           setError('Costo x 1.000 debe ser un número válido.');
-           setSavingData(false);
-           return;
+
+       // Validaciones específicas solo para el tipo "Rollo"
+       if (newProductoData.tipo === 'Rollo') {
+           if (newProductoData.eti_x_rollo === '' || isNaN(parseFloat(newProductoData.eti_x_rollo))) {
+               setError('Eti x rollo es obligatorio y debe ser un número válido para el tipo Rollo.');
+               setSavingData(false);
+               return;
+           }
+           if (parseFloat(newProductoData.eti_x_rollo) <= 0) {
+                setError('Eti x rollo debe ser un número positivo para el tipo Rollo.');
+                setSavingData(false);
+                return;
+           }
+           // Aquí podrías agregar validación para costo_x_1000 específica para Rollo si fuera diferente
+       } else {
+           // Validaciones para tipos NO Rollo (si las hubiera aparte del costo principal)
+           // Por ahora, asumimos que solo el costo_x_1000 es el campo principal a validar
+           // si newProductoData.costo_x_1000 es obligatorio para todos los tipos excepto Rollo, validarlo aquí
+           // (Actualmente la primera validación de costo_x_1000 ya lo cubre si no está vacío)
        }
+       // --- Fin Validaciones Condicionales ---
+
+        // Validar Precio (común a todos)
         if (newProductoData.precio !== '' && isNaN(parseFloat(newProductoData.precio))) {
            setError('Precio debe ser un número válido.');
            setSavingData(false);
            return;
        }
-        // Validate eti_x_rollo is positive if provided
-        if (newProductoData.eti_x_rollo !== '' && parseFloat(newProductoData.eti_x_rollo) <= 0) {
-             setError('Eti x rollo debe ser un número positivo.');
-             setSavingData(false);
-             return;
-        }
+        // Validar otros campos comunes si son obligatorios
 
 
-       // Calculate costo_x_rollo one last time before sending, based on final input values
-       // Ensure values are parsed as floats for calculation
-       const costoPorMilFloat = parseFloat(newProductoData.costo_x_1000);
-       const etiPorRolloFloat = parseFloat(newProductoData.eti_x_rollo);
+       // Calcular costo_x_rollo por última vez antes de enviar, basado en valores finales
        let calculatedCostoXRollo = null;
-        if (!isNaN(costoPorMilFloat) && !isNaN(etiPorRolloFloat) && etiPorRolloFloat > 0) {
-            calculatedCostoXRollo = (costoPorMilFloat / 1000) * etiPorRolloFloat;
-        }
+       // SOLO calcular si el tipo es 'Rollo'
+       if (newProductoData.tipo === 'Rollo') {
+           const costoPorMilFloat = parseFloat(newProductoData.costo_x_1000);
+           const etiPorRolloFloat = parseFloat(newProductoData.eti_x_rollo);
+            if (!isNaN(costoPorMilFloat) && !isNaN(etiPorRolloFloat) && etiPorRolloFloat > 0) {
+                calculatedCostoXRollo = (costoPorMilFloat / 1000) * etiPorRolloFloat;
+            }
+       }
 
 
-      // Prepare data to send to backend - keys match DB column names
-      // Ensure numerical fields are numbers or null, not empty strings
+      // Prepare data to send to backend - ensure fields are numbers or null based on TYPE and value
       const dataToSend = {
           codigo: newProductoData.codigo,
           Descripcion: newProductoData.Descripcion,
-          eti_x_rollo: newProductoData.eti_x_rollo !== '' ? parseFloat(newProductoData.eti_x_rollo) : null,
+          tipo: newProductoData.tipo, // <-- Incluir tipo
+          // Campos específicos de Rollo: enviar null si el tipo no es Rollo
+          eti_x_rollo: newProductoData.tipo === 'Rollo' && newProductoData.eti_x_rollo !== '' ? parseFloat(newProductoData.eti_x_rollo) : null,
+          costo_x_rollo: calculatedCostoXRollo, // <-- El costo calculado (null si no es Rollo)
+
+          // Campo de costo principal: enviar como número o null
           costo_x_1000: newProductoData.costo_x_1000 !== '' ? parseFloat(newProductoData.costo_x_1000) : null,
-          costo_x_rollo: calculatedCostoXRollo, // Send the calculated float value or null
+
+          // Campos comunes a todos
           precio: newProductoData.precio !== '' ? parseFloat(newProductoData.precio) : null,
-          banda: newProductoData.banda || null, // Include new fields
+          banda: newProductoData.banda || null,
           material: newProductoData.material || null,
           Buje: newProductoData.Buje || null,
       };
+
+       // Opcional: Si quieres asegurarte de que el backend reciba explícitamente null para campos no aplicables,
+       // podrías limpiar más dataToSend aquí antes de enviarla, por ejemplo:
+       /*
+       if (dataToSend.tipo !== 'Rollo') {
+           dataToSend.eti_x_rollo = null;
+           dataToSend.costo_x_rollo = null;
+           // Si hubiera otros campos específicos de otros tipos, limpiarlos aquí
+       }
+       */
+
 
       try {
            // Call the async API function for adding
@@ -239,9 +303,9 @@ function ListaProductos() {
            console.log('Producto added successfully:', response.success);
            // Handle success response (e.g., { success: { id: newId } })
 
-           // Clear form using new column names
+           // Clear form using new column names, including 'tipo'
           setNewProductoData({
-              codigo: '', Descripcion: '', eti_x_rollo: '',
+              codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Limpiar tipo
               costo_x_1000: '', costo_x_rollo: '', precio: '',
               banda: '', material: '', Buje: '', // Clear new fields
           });
@@ -274,16 +338,17 @@ function ListaProductos() {
            // Call the async API function to get product data by ID
           const data = await electronAPI.getProductoById(selectedProductoId); // New API call
            console.log(`Producto ID ${selectedProductoId} data loaded:`, data);
-           // Populate editedProductoData using new DB column names from fetched data
-           // Ensure numerical values from DB (which might be numbers or null) are converted to strings for input fields
+           // Populate editedProductoData using new DB column names from fetched data, ADD 'tipo'
+           // Ensure numerical values from DB are converted to strings for input fields
           setEditedProductoData({
               id: data.id, // Keep the ID for update
               codigo: data.codigo || '',
               Descripcion: data.Descripcion || '',
-              eti_x_rollo: data.eti_x_rollo !== null ? String(data.eti_x_rollo) : '',
-              costo_x_1000: data.costo_x_1000 !== null ? String(data.costo_x_1000) : '',
-              costo_x_rollo: data.costo_x_rollo !== null ? String(data.costo_x_rollo) : '', // Populate stored value
-              precio: data.precio !== null ? String(data.precio) : '',
+              tipo: data.tipo || '', // <-- Cargar tipo
+              eti_x_rollo: data.eti_x_rollo !== null ? String(data.eti_x_rollo) : '', // Cargar valor
+              costo_x_1000: data.costo_x_1000 !== null ? String(data.costo_x_1000) : '', // Cargar valor
+              costo_x_rollo: data.costo_x_rollo !== null ? String(data.costo_x_rollo) : '', // Cargar valor
+              precio: data.precio !== null ? String(data.precio) : '', // Cargar valor
               banda: data.banda || '', // Populate new fields
               material: data.material || '',
               Buje: data.Buje || '',
@@ -294,9 +359,9 @@ function ListaProductos() {
           setError(err.message || `Error al cargar los datos del producto.`);
           setEditingProductoId(null);
           setSelectedProductoId(null);
-           // Reset edited data structure
+           // Reset edited data structure, ADD 'tipo'
           setEditedProductoData({
-              id: null, codigo: '', Descripcion: '', eti_x_rollo: '',
+              id: null, codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Añadir tipo
               costo_x_1000: '', costo_x_rollo: '', precio: '',
               banda: '', material: '', Buje: '', // Reset new fields
           });
@@ -307,37 +372,52 @@ function ListaProductos() {
    };
 
 
-  // Handle changes in the edit form (uses editedProductoData state with new DB column names)
+  // Handle changes in the edit form (uses editedProductoData state with new DB column names), ADD 'tipo' logic
   const handleEditFormChange = (e) => {
       const { name, value } = e.target;
        let updatedEditedData = { ...editedProductoData, [name]: value }; // Use a temporary variable
 
-        // Optional: Recalculate Costo x rollo for display/storage on edit form input change
-        if (name === 'costo_x_1000' || name === 'eti_x_rollo') {
-            // Use the *updated* values for calculation from the temporary variable
-            const costoPorMil = updatedEditedData.costo_x_1000; // Use string value directly
-            const etiPorRollo = updatedEditedData.eti_x_rollo; // Use string value directly
+        // --- Lógica Condicional para CAMPOS y CÁLCULOS según el Tipo en Editar ---
+        // Esta lógica se ejecuta cada vez que cambia CUALQUIER campo del formulario
 
-            // Only calculate if both fields have non-empty values
-            if (costoPorMil !== '' && etiPorRollo !== '') {
-                const costoPorMilFloat = parseFloat(costoPorMil);
-                const etiPorRolloFloat = parseFloat(etiPorRollo);
-
-                 if (!isNaN(costoPorMilFloat) && !isNaN(etiPorRolloFloat) && etiPorRolloFloat > 0) { // Added check for > 0
-                     const costoRollo = (costoPorMilFloat / 1000) * etiPorRolloFloat;
-                     // Update the temporary state with the calculated value (as string for input field)
-                     updatedEditedData.costo_x_rollo = costoRollo.toFixed(2);
-                 } else {
-                      // Clear costo_x_rollo if inputs are invalid or eti is zero/negative
-                      updatedEditedData.costo_rollo = ''; // Corrected state key
-                 }
-            } else {
-                 // Clear costo_x_rollo if either input is empty
-                  updatedEditedData.costo_x_rollo = '';
+        // Si el campo que cambió es el TIPO, limpia campos relacionados que son específicos de otros tipos
+       if (name === 'tipo') {
+            if (value !== 'Rollo') { // Si el nuevo tipo NO es Rollo, limpia los campos específicos de Rollo
+                updatedEditedData.eti_x_rollo = '';
+                updatedEditedData.costo_x_rollo = ''; // Limpia el costo calculado
+                // Puedes agregar aquí lógica para limpiar otros campos si fueran específicos de otros tipos
+            } else { // Si el nuevo tipo ES Rollo, limpia campos que podrían ser específicos de otros tipos (si los hubiera)
+                // (Por ahora no hay campos específicos de otros tipos aparte del 'costo_x_1000')
             }
+            // Cuando cambia el tipo, la etiqueta del costo principal (costo_x_1000) se actualizará automáticamente en el JSX
         }
 
-        setEditedProductoData(updatedEditedData); // Update the state with the temporary variable
+        // Lógica de cálculo de Costo x rollo: SOLO si el tipo es 'Rollo' y cambian los inputs relevantes
+        if (updatedEditedData.tipo === 'Rollo' && (name === 'costo_x_1000' || name === 'eti_x_rollo' || name === 'tipo')) {
+             const costoPorMil = updatedEditedData.costo_x_1000;
+             const etiPorRollo = updatedEditedData.eti_x_rollo;
+
+             if (costoPorMil !== '' && etiPorRollo !== '') {
+                 const costoPorMilFloat = parseFloat(costoPorMil);
+                 const etiPorRolloFloat = parseFloat(etiPorRollo);
+
+                  if (!isNaN(costoPorMilFloat) && !isNaN(etiPorRolloFloat) && etiPorRolloFloat > 0) {
+                      const costoRollo = (costoPorMilFloat / 1000) * etiPorRolloFloat;
+                      updatedEditedData.costo_x_rollo = costoRollo.toFixed(2); // Actualiza el costo calculado
+                  } else {
+                       updatedEditedData.costo_rollo = ''; // Limpia si inputs inválidos para Rollo
+                  }
+             } else {
+                  updatedEditedData.costo_x_rollo = ''; // Limpia si inputs vacíos para Rollo
+             }
+        } else if (updatedEditedData.tipo !== 'Rollo') {
+             // Si el tipo NO es Rollo, asegura que el costo calculado (costo_x_rollo) siempre esté vacío
+             updatedEditedData.costo_x_rollo = '';
+        }
+        // --- Fin Lógica Condicional ---
+
+
+        setEditedProductoData(updatedEditedData); // Actualiza el estado con los cambios y cálculos
   };
 
 
@@ -346,59 +426,83 @@ function ListaProductos() {
       setSavingData(true);
       setError(null);
 
-      // Basic validation
-      if (!editedProductoData.codigo || !editedProductoData.Descripcion) {
-           setError('Código y Descripción son campos obligatorios.');
+      // Basic validation, INCLUDE 'tipo'
+      if (!editedProductoData.codigo || !editedProductoData.Descripcion || !editedProductoData.tipo) { // Validate 'tipo' is selected
+           setError('Código, Descripción y Tipo son campos obligatorios.');
            setSavingData(false);
            return;
       }
-       if (editedProductoData.eti_x_rollo !== '' && isNaN(parseFloat(editedProductoData.eti_x_rollo))) {
-           setError('Eti x rollo debe ser un número válido.');
-           setSavingData(false);
-           return;
-       }
-        if (editedProductoData.costo_x_1000 !== '' && isNaN(parseFloat(editedProductoData.costo_x_1000))) {
-           setError('Costo x 1.000 debe ser un número válido.');
-           setSavingData(false);
-           return;
-       }
-        if (editedProductoData.precio !== '' && isNaN(parseFloat(editedProductoData.precio))) {
-           setError('Precio debe ser un número válido.');
-           setSavingData(false);
-           return;
-       }
-        // Validate eti_x_rollo is positive if provided
-        if (editedProductoData.eti_x_rollo !== '' && parseFloat(editedProductoData.eti_x_rollo) <= 0) {
-             setError('Eti x rollo debe ser un número positivo.');
-             setSavingData(false);
-             return;
-        }
+
+      // --- Validaciones Condicionales según el Tipo en Editar ---
+      // Validar el campo de costo principal (costo_x_1000) usando la etiqueta correcta
+      if (editedProductoData.costo_x_1000 !== '' && isNaN(parseFloat(editedProductoData.costo_x_1000))) {
+          setError(getCostLabel(editedProductoData.tipo) + ' debe ser un número válido.'); // Usa dynamic label in error
+          setSavingData(false);
+          return;
+      }
+
+      // Validaciones específicas solo para el tipo "Rollo"
+      if (editedProductoData.tipo === 'Rollo') {
+          if (editedProductoData.eti_x_rollo === '' || isNaN(parseFloat(editedProductoData.eti_x_rollo))) {
+              setError('Eti x rollo es obligatorio y debe ser un número válido para el tipo Rollo.');
+              setSavingData(false);
+              return;
+          }
+          if (parseFloat(editedProductoData.eti_x_rollo) <= 0) {
+               setError('Eti x rollo debe ser un número positivo para el tipo Rollo.');
+               setSavingData(false);
+               return;
+          }
+          // Aquí podrías agregar validación para costo_x_1000 específica para Rollo si fuera diferente
+      } else {
+          // Validaciones para tipos NO Rollo (si las hubiera aparte del costo principal)
+          // (Actualmente la primera validación de costo_x_1000 ya lo cubre si no está vacío)
+      }
+      // --- Fin Validaciones Condicionales ---
+
+       // Validar Precio (común a todos)
+       if (editedProductoData.precio !== '' && isNaN(parseFloat(editedProductoData.precio))) {
+          setError('Precio debe ser un número válido.');
+          setSavingData(false);
+          return;
+      }
+       // Validar otros campos comunes si son obligatorios
 
 
-       // Calculate costo_x_rollo one last time before sending, based on final input values
-       // Ensure values are parsed as floats for calculation
-       const costoPorMilFloat = parseFloat(editedProductoData.costo_x_1000);
-       const etiPorRolloFloat = parseFloat(editedProductoData.eti_x_rollo);
+       // Calcular costo_x_rollo por última vez antes de enviar, basado en valores finales
        let calculatedCostoXRollo = null;
-       if (!isNaN(costoPorMilFloat) && !isNaN(etiPorRolloFloat) && etiPorRolloFloat > 0) {
-           calculatedCostoXRollo = (costoPorMilFloat / 1000) * etiPorRolloFloat;
+       // SOLO calcular si el tipo es 'Rollo'
+       if (editedProductoData.tipo === 'Rollo') {
+           const costoPorMilFloat = parseFloat(editedProductoData.costo_x_1000);
+           const etiPorRolloFloat = parseFloat(editedProductoData.eti_x_rollo);
+            if (!isNaN(costoPorMilFloat) && !isNaN(etiPorRolloFloat) && etiPorRolloFloat > 0) {
+                calculatedCostoXRollo = (costoPorMilFloat / 1000) * etiPorRolloFloat;
+            }
        }
 
 
-      // Prepare data to send to backend - keys match DB column names, includes calculated costo_x_rollo
-      // Ensure numerical fields are numbers or null, not empty strings
+      // Prepare data to send to backend - ensure fields are numbers or null based on TYPE and value
       const dataToSend = {
            id: editedProductoData.id,
            codigo: editedProductoData.codigo,
            Descripcion: editedProductoData.Descripcion,
-           eti_x_rollo: editedProductoData.eti_x_rollo !== '' ? parseFloat(editedProductoData.eti_x_rollo) : null,
+           tipo: editedProductoData.tipo, // <-- Incluir tipo
+           // Campos específicos de Rollo: enviar null si el tipo no es Rollo
+           // CORREGIDO: editedEditedData -> editedProductoData
+           eti_x_rollo: editedProductoData.tipo === 'Rollo' && editedProductoData.eti_x_rollo !== '' ? parseFloat(editedProductoData.eti_x_rollo) : null,
+           costo_x_rollo: calculatedCostoXRollo, // <-- El costo calculado (null si no es Rollo)
+
+           // Campo de costo principal: enviar como número o null
            costo_x_1000: editedProductoData.costo_x_1000 !== '' ? parseFloat(editedProductoData.costo_x_1000) : null,
-           costo_x_rollo: calculatedCostoXRollo, // Send the calculated float value or null
+
+           // Campos comunes a todos
            precio: editedProductoData.precio !== '' ? parseFloat(editedProductoData.precio) : null,
-           banda: editedProductoData.banda || null, // Include new fields
+           banda: editedProductoData.banda || null,
            material: editedProductoData.material || null,
            Buje: editedProductoData.Buje || null,
+           // Podrías necesitar otros campos de costo/cantidad aquí dependiendo del tipo
       };
+
 
       try {
            // Call the async API function for updating
@@ -408,9 +512,9 @@ function ListaProductos() {
            // Handle success response (e.g., { success: { id: ..., changes: ... } })
 
           setEditingProductoId(null);
-           // Reset edited data structure
+           // Reset edited data structure, ADD 'tipo'
           setEditedProductoData({
-              id: null, codigo: '', Descripcion: '', eti_x_rollo: '',
+              id: null, codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Añadir tipo
               costo_x_1000: '', costo_x_rollo: '', precio: '',
               banda: '', material: '', Buje: '', // Reset new fields
           });
@@ -429,9 +533,9 @@ function ListaProductos() {
 
   const handleCancelEdit = () => {
       setEditingProductoId(null);
-      // Reset edited data structure
+      // Reset edited data structure, ADD 'tipo'
       setEditedProductoData({
-          id: null, codigo: '', Descripcion: '', eti_x_rollo: '',
+          id: null, codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Añadir tipo
           costo_x_1000: '', costo_x_rollo: '', precio: '',
           banda: '', material: '', Buje: '', // Reset new fields
       });
@@ -473,9 +577,9 @@ function ListaProductos() {
     const handleNewProductoClick = () => {
         setShowAddForm(true);
         setError(null); // Clear any previous errors
-         // Ensure newProductoData state is reset when opening the form
+         // Ensure newProductoData state is reset when opening the form, ADD 'tipo'
          setNewProductoData({
-             codigo: '', Descripcion: '', eti_x_rollo: '',
+             codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Limpiar tipo
              costo_x_1000: '', costo_x_rollo: '', precio: '',
              banda: '', material: '', Buje: '', // Reset new fields
          });
@@ -490,19 +594,57 @@ function ListaProductos() {
          // Optional: Reset newProductoData state here too, or rely on handleNewProductoClick
     };
 
+    // --- Función para manejar la Exportación ---
+      const handleExportClick = async () => { // Hazla async porque llamará a una API asíncrona
+          setError(null); // Limpia cualquier error previo
+
+          try {
+              // Llama a una nueva función en tu electronAPI para solicitar la exportación
+              // Podrías pasarle un formato si tu backend soporta varios
+              const result = await electronAPI.exportProductosCsv(); // Suponemos que tienes una API así
+
+              if (result.success) {
+                  // Muestra un mensaje de éxito al usuario (opcional)
+                  console.log('Exportación exitosa:', result.filePath);
+                  // Podrías mostrar una notificación al usuario, ej:
+                  // alert(`Productos exportados a:\n${result.filePath}`);
+              } else {
+                   // Si el backend reporta un error pero no lanza una excepción
+                  console.error('Error en la exportación:', result.error);
+                  setError(result.error || 'Error desconocido durante la exportación.');
+              }
+
+          } catch (err) {
+              // Maneja errores si la llamada a la API falla o lanza una excepción
+              console.error('Error al solicitar la exportación:', err);
+              setError(err.message || 'Ocurrió un error al solicitar la exportación.');
+          }
+      };
+
 
   return (
     <div className="container">
       <h2>Gestión de Productos</h2>
 
-      {/* Button to show the add form */}
+      {/* Botón para mostrar el formulario de agregar */}
       {!showAddForm && (
            <button onClick={handleNewProductoClick} disabled={loading || loadingEditData || savingData || deletingProductoId !== null}>
                Nuevo Producto
            </button>
       )}
 
-      {/* Form to Add New Producto (Conditional Rendering) */}
+       {/* Botón de Exportar (colócalo donde prefieras, aquí lo ponemos junto a los de acción) */}
+       {/* Deshabilítalo si se están realizando otras operaciones */}
+       <button
+           onClick={handleExportClick}
+           disabled={loading || loadingEditData || savingData || deletingProductoId !== null}
+           style={{ marginLeft: '10px' }} // Añade algo de espacio si está junto a otros botones
+       >
+           Exportar Productos (CSV)
+       </button>
+
+
+      {/* Formulario para Agregar Nuevo Producto (Conditional Rendering) */}
       {showAddForm && (
           <>
               <h3>Agregar Nuevo Producto</h3>
@@ -516,30 +658,58 @@ function ListaProductos() {
                   <label htmlFor="new-descripcion">Descripción:</label>
                   <input type="text" id="new-descripcion" name="Descripcion" value={newProductoData.Descripcion} onChange={handleNewProductoInputChange} required disabled={savingData || loadingEditData || deletingProductoId !== null} />
                 </div>
+
+                {/* --- CAMPO: Tipo de Producto --- */}
                 <div>
-                  <label htmlFor="new-eti-rollo">Eti x rollo:</label>
-                  <input type="number" id="new-eti-rollo" name="eti_x_rollo" value={newProductoData.eti_x_rollo} onChange={handleNewProductoInputChange} disabled={savingData || loadingEditData || deletingProductoId !== null} min="0" step="any" /> {/* Allow any step for decimals */}
+                    <label htmlFor="new-tipo">Tipo:</label>
+                    <select id="new-tipo" name="tipo" value={newProductoData.tipo} onChange={handleNewProductoInputChange} required disabled={savingData || loadingEditData || deletingProductoId !== null}>
+                        {PRODUCT_TYPES.map(type => (
+                            <option key={type.value} value={type.value}>{type.label}</option>
+                        ))}
+                    </select>
                 </div>
-                <div>
-                  <label htmlFor="new-costo-1000">Costo x 1.000:</label>
-                  <input type="number" id="new-costo-1000" name="costo_x_1000" value={newProductoData.costo_x_1000} onChange={handleNewProductoInputChange} disabled={savingData || loadingEditData || deletingProductoId !== null} min="0" step="0.01" />
-                </div>
-                 {/* Display calculated costo x rollo in the add form */}
-                 <div>
-                     <label>Costo x rollo:</label>
-                     <input
-                         type="text"
-                         value={calculateCostoPorRollo(newProductoData.costo_x_1000, newProductoData.eti_x_rollo)} /* Calculate and display */
-                         readOnly
-                         disabled={true} /* Always disabled as it's calculated */
-                         style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }} // Dark theme styles for readOnly input
-                     />
-                 </div>
+                {/* --- FIN CAMPO --- */}
+
+
+                {/* --- CAMPOS CONDICIONALES según el Tipo --- */}
+
+                {/* Campos que SOLO se muestran para el tipo "Rollo" */}
+                {newProductoData.tipo === 'Rollo' && (
+                    <>
+                        <div>
+                          <label htmlFor="new-eti-rollo">Eti x rollo:</label>
+                          <input type="number" id="new-eti-rollo" name="eti_x_rollo" value={newProductoData.eti_x_rollo} onChange={handleNewProductoInputChange} disabled={savingData || loadingEditData || deletingProductoId !== null} min="0" step="any" /> {/* Allow any step for decimals */}
+                        </div>
+                         {/* Display calculated costo x rollo */}
+                         <div>
+                             <label>Costo x rollo:</label> {/* Esta etiqueta es fija para el campo calculado */}
+                             <input
+                                 type="text"
+                                 value={calculateCostoPorRollo(newProductoData.costo_x_1000, newProductoData.eti_x_rollo)} /* Calculate and display */
+                                 readOnly
+                                 disabled={true} /* Always disabled as it's calculated */
+                                 style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }} // Dark theme styles for readOnly input
+                             />
+                         </div>
+                    </>
+                )}
+
+                {/* Campo de Costo Principal (etiqueta cambia) - Se muestra para TODOS los tipos EXCEPTO cuando no se ha seleccionado tipo */}
+                {newProductoData.tipo !== '' && (
+                     <div>
+                       {/* La etiqueta cambia dinámicamente según el tipo */}
+                       <label htmlFor="new-costo-principal">{getCostLabel(newProductoData.tipo)}:</label>
+                       {/* Usamos 'costo_x_1000' como el campo donde se ingresa este valor principal */}
+                       <input type="number" id="new-costo-principal" name="costo_x_1000" value={newProductoData.costo_x_1000} onChange={handleNewProductoInputChange} disabled={savingData || loadingEditData || deletingProductoId !== null} min="0" step="0.01" />
+                     </div>
+                )}
+                {/* --- FIN CAMPOS CONDICIONALES --- */}
+
+                 {/* Campos comunes a todos los tipos */}
                  <div>
                   <label htmlFor="new-precio">Precio:</label>
                   <input type="number" id="new-precio" name="precio" value={newProductoData.precio} onChange={handleNewProductoInputChange} disabled={savingData || loadingEditData || deletingProductoId !== null} min="0" step="0.01" />
                 </div>
-                 {/* New fields in the add form */}
                  <div>
                      <label htmlFor="new-banda">Banda:</label>
                      <input type="text" id="new-banda" name="banda" value={newProductoData.banda} onChange={handleNewProductoInputChange} disabled={savingData || loadingEditData || deletingProductoId !== null} />
@@ -606,8 +776,9 @@ function ListaProductos() {
                       <th>ID</th>
                       <th>Código</th>
                       <th>Descripción</th>
-                      <th>Eti x Rollo</th>
-                      <th>Costo x 1.000</th>
+                      <th>Tipo</th> {/* <-- NUEVA COLUMNA */}
+                      <th>Eti x Rollo</th> {/* Mostrar aunque solo aplique a Rollo, o ajustar visualización */}
+                      <th>Costo x 1.000</th> {/* Etiqueta genérica aquí en la tabla */}
                       <th>Costo x Rollo</th> {/* Display the stored value */}
                       <th>Precio</th>
                       <th>Banda</th> {/* New table header */}
@@ -625,9 +796,11 @@ function ListaProductos() {
                           <td>{producto.id}</td>
                           <td>{producto.codigo}</td>
                           <td>{producto.Descripcion}</td>
+                          <td>{producto.tipo}</td> {/* <-- Mostrar el tipo */}
                           <td>{producto.eti_x_rollo}</td>
-                          <td>{producto.costo_x_1000}</td>
-                          <td>{producto.costo_x_rollo}</td> {/* Display the stored value */}
+                           {/* En la tabla, puedes mostrar el Costo x 1.000. Ajusta si quieres mostrar otra columna o formato según el tipo */}
+                          <td>{producto.costo_x_1000}</td> {/* Muestra el valor almacenado en costo_x_1000 */}
+                          <td>{producto.costo_x_rollo}</td> {/* Muestra el valor almacenado en costo_x_rollo */}
                           <td>{producto.precio}</td>
                           <td>{producto.banda}</td> {/* Display new fields */}
                           <td>{producto.material}</td>
@@ -636,7 +809,8 @@ function ListaProductos() {
                         {/* Inline Edit Form Row - Conditionally rendered and only if not adding */}
                         {editingProductoId === producto.id && !showAddForm && (
                             <tr>
-                                 <td colSpan="10"> {/* Adjusted colSpan to 10 (7 old + 3 new) */}
+                                 {/* colSpan ajustado para la nueva columna 'Tipo' */}
+                                 <td colSpan="11"> {/* Ajustado colSpan a 11 */}
                                     <div style={{ padding: '10px', border: '1px solid #424242', margin: '10px 0', backgroundColor: '#2c2c2c' }}> {/* Dark theme styles */}
                                         <h4>Editar Producto (ID: {producto.id})</h4>
                                         {/* Edit form uses new DB column names as keys */}
@@ -649,30 +823,58 @@ function ListaProductos() {
                                                 <label htmlFor={`edit-descripcion-${producto.id}`}>Descripción:</label>
                                                 <input type="text" id={`edit-descripcion-${producto.id}`} name="Descripcion" value={editedProductoData.Descripcion || ''} onChange={handleEditFormChange} required disabled={savingData} />
                                             </div>
-                                             <div>
-                                                <label htmlFor={`edit-eti-rollo-${producto.id}`}>Eti x Rollo:</label>
-                                                <input type="number" id={`edit-eti-rollo-${producto.id}`} name="eti_x_rollo" value={editedProductoData.eti_x_rollo || ''} onChange={handleEditFormChange} disabled={savingData} min="0" step="any" />
+
+                                            {/* --- CAMPO: Tipo de Producto en Editar --- */}
+                                            <div>
+                                                <label htmlFor={`edit-tipo-${producto.id}`}>Tipo:</label>
+                                                <select id={`edit-tipo-${producto.id}`} name="tipo" value={editedProductoData.tipo || ''} onChange={handleEditFormChange} required disabled={savingData}>
+                                                    {PRODUCT_TYPES.map(type => (
+                                                        <option key={type.value} value={type.value}>{type.label}</option>
+                                                    ))}
+                                                </select>
                                             </div>
-                                             <div>
-                                                <label htmlFor={`edit-costo-1000-${producto.id}`}>Costo x 1.000:</label>
-                                                <input type="number" id={`edit-costo-1000-${producto.id}`} name="costo_x_1000" value={editedProductoData.costo_x_1000 || ''} onChange={handleEditFormChange} disabled={savingData} min="0" step="0.01" />
-                                            </div>
-                                             {/* Display calculated costo x rollo in the edit form */}
-                                             <div>
-                                                 <label>Costo x rollo:</label>
-                                                 <input
-                                                     type="text"
-                                                     value={calculateCostoPorRollo(editedProductoData.costo_x_1000, editedProductoData.eti_x_rollo)} /* Calculate and display */
-                                                     readOnly
-                                                     disabled={true}
-                                                     style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }} // Dark theme styles for readOnly input
-                                                 />
-                                             </div>
+                                            {/* --- FIN CAMPO --- */}
+
+                                             {/* --- CAMPOS CONDICIONALES según el Tipo en Editar --- */}
+
+                                            {/* Campos que SOLO se muestran para el tipo "Rollo" en Editar */}
+                                            {editedProductoData.tipo === 'Rollo' && (
+                                                <>
+                                                    <div>
+                                                        <label htmlFor={`edit-eti-rollo-${producto.id}`}>Eti x Rollo:</label>
+                                                        <input type="number" id={`edit-eti-rollo-${producto.id}`} name="eti_x_rollo" value={editedProductoData.eti_x_rollo || ''} onChange={handleEditFormChange} disabled={savingData} min="0" step="any" />
+                                                    </div>
+                                                    {/* Display calculated costo x rollo */}
+                                                    <div>
+                                                         <label>Costo x rollo:</label> {/* Etiqueta fija */}
+                                                         <input
+                                                             type="text"
+                                                             value={calculateCostoPorRollo(editedProductoData.costo_x_1000, editedProductoData.eti_x_rollo)} /* Calculate and display */
+                                                             readOnly
+                                                             disabled={true}
+                                                             style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }} // Dark theme styles for readOnly input
+                                                         />
+                                                     </div>
+                                                </>
+                                            )}
+
+                                             {/* Campo de Costo Principal (etiqueta cambia) - Se muestra para TODOS los tipos EXCEPTO cuando no se ha seleccionado tipo */}
+                                             {editedProductoData.tipo !== '' && (
+                                                  <div>
+                                                     {/* La etiqueta cambia dinámicamente según el tipo */}
+                                                    <label htmlFor={`edit-costo-principal-${producto.id}`}>{getCostLabel(editedProductoData.tipo)}:</label>
+                                                    {/* Usamos 'costo_x_1000' como el campo donde se ingresa este valor principal */}
+                                                    <input type="number" id={`edit-costo-principal-${producto.id}`} name="costo_x_1000" value={editedProductoData.costo_x_1000 || ''} onChange={handleEditFormChange} disabled={savingData} min="0" step="0.01" />
+                                                  </div>
+                                             )}
+                                             {/* --- FIN CAMPOS CONDICIONALES --- */}
+
+
+                                             {/* Campos comunes a todos los tipos */}
                                              <div>
                                                 <label htmlFor={`edit-precio-${producto.id}`}>Precio:</label>
                                                 <input type="number" id={`edit-precio-${producto.id}`} name="precio" value={editedProductoData.precio || ''} onChange={handleEditFormChange} disabled={savingData} min="0" step="0.01" />
                                             </div>
-                                            {/* New fields in the edit form */}
                                              <div>
                                                  <label htmlFor={`edit-banda-${producto.id}`}>Banda:</label>
                                                  <input type="text" id={`edit-banda-${producto.id}`} name="banda" value={editedProductoData.banda || ''} onChange={handleEditFormChange} disabled={savingData} />
@@ -702,8 +904,8 @@ function ListaProductos() {
                   </tbody>
                 </table>
               )}
-              {!loading && productos.length === 0 && !error && <p>No hay productos registrados.</p>}
-          </>
+              {!loading && productos.length === 0 && !error && <p>No hay productos registrados.</p>}\
+        </>
       )}
     </div>
   );

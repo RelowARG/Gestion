@@ -1,42 +1,22 @@
-// src/preload.js (Modificado para incluir el token en apiRequest)
+// src/preload.js (Modificado para incluir el token en apiRequest Y LA EXPORTACIÓN, y exponer addVentaX)
 const { contextBridge, ipcRenderer } = require('electron');
 
 // Define la URL base de tu backend API
 const API_BASE_URL = 'http://localhost:3001/api'; // ASEGÚRATE QUE ESTA URL ES CORRECTA
 
-// Función genérica para realizar peticiones HTTP al backend
+// Función genérica para realizar peticiones HTTP al backend (usada por muchas APIs expuestas)
 const apiRequest = async (method, endpoint, data = null) => {
   const url = `${API_BASE_URL}${endpoint}`;
   const options = {
     method: method,
     headers: {
       'Content-Type': 'application/json',
-      // --- NUEVO: Incluir el token de autorización si existe ---
-      // Intentar obtener el token de localStorage (esto funciona en el proceso renderer, no en preload directamente)
-      // Para que funcione en preload, necesitas obtener el token en el proceso renderer
-      // y pasárselo a esta función apiRequest o usar ipcRenderer para pedirlo.
-      // Una forma simple AHORA MISMO para probar es permitir que el frontend llame a apiRequest
-      // y que apiRequest acceda a localStorage (ya que preload expone la función).
-      // Esto NO es lo más seguro en Electron si accedes a recursos sensibles,
-      // pero para este caso de enviar un token a tu propio backend, es aceptable para empezar.
-
-      // Vamos a modificar apiRequest para que reciba el token como un argumento opcional o
-      // que intente leerlo de un lugar compartido si fuera necesario.
-      // Una opción simple para probar es que el frontend lea el token y se lo pase a la función expuesta.
-
-      // Opción 1: apiRequest lee localStorage directamente (Funciona si apiRequest se ejecuta en el renderer, lo cual es el caso con contextBridge)
-      // const token = localStorage.getItem('authToken');
-      // if (token) {
-      //     headers['Authorization'] = `Bearer ${token}`;
-      // }
-      // Opción 2: apiRequest recibe el token (Requiere modificar todas las llamadas en el frontend)
-      // Opción 3: Usar IPC para pedir el token (Más seguro en teoría, más complejo)
-
-      // Implementaremos la Opción 1, ya que contextBridge expone la función para ser llamada por el renderer.
+      // --- Incluir el token de autorización si existe ---
+      // Lee el token de localStorage ANTES de definir los headers
     },
   };
 
-   // Leer el token ANTES de definir los headers para asegurarnos de que esté presente
+   // Lee el token ANTES de definir los headers para asegurarnos de que esté presente
     const token = localStorage.getItem('authToken');
     if (token) {
         options.headers['Authorization'] = `Bearer ${token}`;
@@ -78,21 +58,22 @@ const apiRequest = async (method, endpoint, data = null) => {
 contextBridge.exposeInMainWorld(
   'electronAPI',
   {
-    // --- Exponer la función apiRequest ---
+    // --- Exponer la función apiRequest (ya estaba) ---
      apiRequest: apiRequest, // Expone la función modificada
 
-    // --- Canales IPC (Mantener si son necesarios, como para PDF) ---
-    savePresupuestoPdf: (htmlContent, suggestedFileName) => ipcRenderer.invoke('save-presupuesto-pdf', htmlContent, suggestedFileName),
+    // --- Canales IPC (Mantener si son necesarios, como para PDF - Llama al proceso main) ---
+    // savePresupuestoPdf: (htmlContent, suggestedFileName) => ipcRenderer.invoke('save-presupuesto-pdf', htmlContent, suggestedFileName),
+    // Nota: La función de guardar PDF ya estaba manejada en main.js con un ipcMain.handle
+    // y expuesta en el preload, la mantendremos aquí.
+     savePresupuestoPdf: (htmlContent, suggestedFileName) => ipcRenderer.invoke('save-presupuesto-pdf', htmlContent, suggestedFileName),
+     // *** NUEVA función para exportar productos - Llama al proceso main ***
+     // Esta función será llamada desde el render (ListaProductos.js)
+     // y enviará un mensaje IPC al proceso main para iniciar la exportación.
+     exportProductosCsv: () => ipcRenderer.invoke('exportProductosCsv'), // El nombre 'exportProductosCsv' debe coincidir en el render y main.js
+     // *** Fin NUEVA función (Llama al proceso main) ***
 
-    // --- Las demás funciones expuestas ahora usan apiRequest internamente ---
-    // No necesitas listarlas individualmente si todas usan la función apiRequest genérica
-    // con los endpoints. Por ejemplo, en lugar de:
-    // getClients: async () => apiRequest('GET', '/clientes'),
-    // addClient: async (clientData) => apiRequest('POST', '/clientes', clientData),
-    // ...etc.
-    // La aplicación frontend llamará a `electronAPI.apiRequest('GET', '/clientes')`, etc.
-    // Si quieres mantener las funciones helper como `electronAPI.getClients()`,
-    // asegúrate de que llamen a `apiRequest` internamente:
+
+    // --- Las demás funciones expuestas que usan apiRequest internamente (Llaman al backend Express) ---
      getClients: async () => apiRequest('GET', '/clientes'),
      addClient: async (clientData) => apiRequest('POST', '/clientes', clientData),
      getClientById: async (id) => apiRequest('GET', `/clientes/${id}`),
@@ -135,6 +116,8 @@ contextBridge.exposeInMainWorld(
      updatePresupuesto: async (id, presupuestoData) => apiRequest('PUT', `/presupuestos/${id}`, presupuestoData),
      deletePresupuesto: async (id) => apiRequest('DELETE', `/presupuestos/${id}`),
 
+     // --- Funciones para VentasX (Llaman al backend Express) ---
+     addVentaX: async (ventaXData) => apiRequest('POST', '/ventasx', ventaXData), // <--- ¡FUNCIÓN FALTANTE AÑADIDA!
      getVentasX: async () => apiRequest('GET', '/ventasx'),
      getVentaXById: async (id) => apiRequest('GET', `/ventasx/${id}`),
      updateVentaX: async (id, ventaXData) => apiRequest('PUT', `/ventasx/${id}`, ventaXData),
@@ -204,8 +187,8 @@ contextBridge.exposeInMainWorld(
      },
      addManualCashflowMovement: async (movementData) => apiRequest('POST', '/cashflow/manual-movements', movementData),
      getCashFlowMovementById: async (id) => apiRequest('GET', `/cashflow/movements/${id}`),
-     updateManualCashflowMovement: async (id, movementData) => apiRequest('PUT', `/cashflow/manual-movements/${id}`, movementData),
-     deleteCashflowMovement: async (id) => apiRequest('DELETE', `/cashflow/movements/${id}`),
+     updateManualCashflowMovement: async (id, movementData) => apiRequest('PUT', '/cashflow/manual-movements/${id}', movementData),
+     deleteCashflowMovement: async (id) => apiRequest('DELETE', '/cashflow/movements/${id}'),
 
      getInactiveClients: async (months) => {
          let url = `/estadisticas/inactive-clients`;
@@ -244,6 +227,12 @@ contextBridge.exposeInMainWorld(
      },
 
      getKeyBalanceMetrics: async () => apiRequest('GET', '/balance/key-metrics'),
+
+
+     // --- Agregar otras funciones expuestas si son necesarias (ej: login, etc.) ---
+     // Si tienes una función de login en el main que necesita ser llamada desde el render
+     // login: (credentials) => ipcRenderer.invoke('login', credentials),
+     // Y otras APIs que no usan la función apiRequest genérica
 
   }
 );

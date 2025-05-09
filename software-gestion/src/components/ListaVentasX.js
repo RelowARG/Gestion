@@ -1,8 +1,9 @@
-// ListaVentasX.js (Modified for Backend Auto-Generated Number, Date Formatting, and Edit Fix)
+// ListaVentasX.js (Basado en la versión original, adaptado para usar VentaItemsEditorX con búsqueda y sin validación de personalizado)
 // Este componente gestiona la sección de VentasX sin incluir IVA.
+// Incluye comprobaciones de seguridad para evitar errores de acceso a propiedades de undefined.
 
 import React, { useState, useEffect } from 'react';
-import VentaItemsEditorX from './ventasx/VentaItemsEditorX';
+import VentaItemsEditorX from './ventasx/VentaItemsEditorX'; // Usamos la versión con búsqueda y sin validación de personalizado
 import ImportPresupuestoModalX from './ventasx/ImportPresupuestoModalX';
 import { format } from 'date-fns'; // Import the format function from date-fns
 
@@ -13,7 +14,7 @@ const electronAPI = window.electronAPI;
 function ListaVentasX() {
   const [ventas, setVentas] = useState([]); // Note: This state name is 'ventas' but stores VentasX data
   const [clientes, setClientes] = useState([]);
-  const [productos, setProductos] = useState([]);
+  const [productos, setProductos] = useState([]); // Needed for product dropdown in VentaItemsEditorX
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedVentaId, setSelectedVentaId] = useState(null);
@@ -31,7 +32,7 @@ function ListaVentasX() {
       Total: '', // Now equal to Subtotal
       Cotizacion_Dolar: '',
       Total_ARS: '',
-      items: [],
+      items: [], // Inicializado como array vacío
   });
 
   // Removed IVA from state definitions
@@ -45,7 +46,7 @@ function ListaVentasX() {
       Total: '', // Now equal to Subtotal
       Cotizacion_Dolar: '',
       Total_ARS: '',
-      items: [],
+      items: [], // Inicializado como array vacío
   });
 
   const [loadingEditData, setLoadingEditData] = useState(false);
@@ -54,6 +55,8 @@ function ListaVentasX() {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false); // State to control modal visibility
+
+  // Eliminado el estado clearItemsEditorErrorsTrigger
 
 
   // Function to fetch VentasX using the new API
@@ -66,7 +69,7 @@ function ListaVentasX() {
     setEditedVentaData({
         id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
         Estado: '', Pago: '', Subtotal: '', Total: '',
-        Cotizacion_Dolar: '', Total_ARS: '', items: []
+        Cotizacion_Dolar: '', Total_ARS: '', items: [] // Asegurado como array vacío
     });
 
     try {
@@ -113,10 +116,10 @@ function ListaVentasX() {
       try {
           const data = await electronAPI.getProductos(); // New API call (GET /productos)
           console.log('Products loaded for ventax items:', data);
-          setProductos(data);
+          setProductos(data); // Asegurado que productos es un array
       } catch (err) {
           console.error('Error fetching products for ventax items:', err);
-          // Decide how to handle error
+          setProductos([]); // Asegurar que productos sea un array vacío en caso de error
       }
        // No loading state controlled here
        // Removed IPC listener setup and cleanup for fetching products
@@ -145,7 +148,7 @@ function ListaVentasX() {
     // Call the async fetch functions directly
     fetchVentas();
     fetchClients();
-    fetchProductos();
+    fetchProductos(); // Asegurarse de que productos se carga al montar
 
     // Removed IPC listener setup and cleanup from here
     // return () => { ... }; // REMOVED
@@ -160,7 +163,7 @@ function ListaVentasX() {
            setEditedVentaData({
                id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
                Estado: '', Pago: '', Subtotal: '', Total: '',
-               Cotizacion_Dolar: '', Total_ARS: '', items: []
+               Cotizacion_Dolar: '', Total_ARS: '', items: [] // Asegurado como array vacío
            });
        } else {
            setSelectedVentaId(ventaId);
@@ -170,7 +173,7 @@ function ListaVentasX() {
                setEditedVentaData({
                    id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
                    Estado: '', Pago: '', Subtotal: '', Total: '',
-                   Cotizacion_Dolar: '', Total_ARS: '', items: []
+                   Cotizacion_Dolar: '', Total_ARS: '', items: [] // Asegurado como array vacío
                });
            }
        }
@@ -219,7 +222,10 @@ function ListaVentasX() {
    // This handler is responsible for calculating the Subtotal and Total USD for NEW sales.
    // The useEffect below will then calculate Total ARS.
    const handleNewVentaItemsChange = (newItems) => {
-       const calculatedSubtotal = newItems.reduce((sum, item) => {
+       // Añadir comprobación de seguridad: asegurar que newItems es un array
+       const itemsArray = Array.isArray(newItems) ? newItems : [];
+
+       const calculatedSubtotal = itemsArray.reduce((sum, item) => {
            const itemTotal = parseFloat(item.Total_Item);
            return sum + (isNaN(itemTotal) ? 0 : itemTotal);
        }, 0).toFixed(2); // Keep 2 decimal places for currency
@@ -227,7 +233,7 @@ function ListaVentasX() {
        setNewVentaData(prevState => {
            const updatedState = {
                ...prevState,
-               items: newItems,
+               items: itemsArray, // Usar el array asegurado
                Subtotal: calculatedSubtotal // Update Subtotal based on items
            };
 
@@ -258,7 +264,10 @@ function ListaVentasX() {
     useEffect(() => {
         if (showAddForm) {
             console.log('[ListaVentasX] Recalculating totals due to items or Cotizacion_Dolar change in add form (no IVA).');
-            const calculatedSubtotal = newVentaData.items.reduce((sum, item) => {
+             // Añadir comprobación de seguridad: asegurar que newVentaData.items es un array
+             const itemsArray = Array.isArray(newVentaData.items) ? newVentaData.items : [];
+
+            const calculatedSubtotal = itemsArray.reduce((sum, item) => {
                 const itemTotal = parseFloat(item.Total_Item);
                 return sum + (isNaN(itemTotal) ? 0 : itemTotal);
             }, 0).toFixed(2);
@@ -305,6 +314,7 @@ function ListaVentasX() {
       setError(null);
 
       // Removed Nro_VentaX from validation
+      // Añadir comprobación de seguridad para items
       if (!newVentaData.Fecha || !newVentaData.Cliente_id || !newVentaData.Estado || !newVentaData.Pago || !Array.isArray(newVentaData.items) || newVentaData.items.length === 0 || newVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(newVentaData.Cotizacion_Dolar)) || parseFloat(newVentaData.Cotizacion_Dolar) <= 0) {
            // Updated validation message
            setError('Fecha, Cliente, Estado, Pago, Cotización Dólar (válida) y al menos un ítem son campos obligatorios para VentasX.');
@@ -344,7 +354,7 @@ function ListaVentasX() {
           Total: newVentaData.Total !== '' ? parseFloat(newVentaData.Total) : null, // Send calculated total USD (Subtotal)
           Cotizacion_Dolar: newVentaData.Cotizacion_Dolar !== '' ? parseFloat(newVentaData.Cotizacion_Dolar) : null,
           Total_ARS: newVentaData.Total_ARS !== '' ? parseFloat(newVentaData.Total_ARS) : null,
-           // Include the items array
+           // Include the items array (asegurado que es array por la validación)
           items: newVentaData.items.map(item => ({
               // id is NOT included for new items
               type: item.type, // Send the type
@@ -366,6 +376,14 @@ function ListaVentasX() {
 
       console.log('[ListaVentasX] Enviando dataToSend.items al backend:', dataToSend.items);
 
+      // *** VERIFICAR QUE electronAPI.addVentaX ESTÉ DEFINIDO ANTES DE LLAMAR ***
+      if (!electronAPI || typeof electronAPI.addVentaX !== 'function') {
+          console.error('electronAPI.addVentaX is not defined or not a function.');
+          setError('Error interno: La función para agregar Venta X no está disponible.');
+          setSavingData(false);
+          return;
+      }
+
 
       try {
           // Call the async API function for adding
@@ -378,7 +396,7 @@ function ListaVentasX() {
               Fecha: '', // Nro_VentaX is not in state anymore
               Cliente_id: '', Estado: '',
               Pago: '', Subtotal: '', Total: '',
-              Cotizacion_Dolar: '', Total_ARS: '', items: [],
+              Cotizacion_Dolar: '', Total_ARS: '', items: [], // Asegurado como array vacío
           });
           setShowAddForm(false);
           fetchVentas(); // Refresh the list of sales
@@ -425,11 +443,11 @@ function ListaVentasX() {
                Total: ventaData.Total !== null ? String(ventaData.Total) : '', // Total USD (Subtotal)
                Cotizacion_Dolar: ventaData.Cotizacion_Dolar !== null ? String(ventaData.Cotizacion_Dolar) : '',
                Total_ARS: ventaData.Total_ARS !== null ? String(ventaData.Total_ARS) : '',
-               items: ventaData.items || [],
+               items: Array.isArray(ventaData.items) ? ventaData.items : [], // Asegurado como array
            });
             // Re-fetch clients and products just in case for the dropdowns
             fetchClients();
-            fetchProductos();
+            fetchProductos(); // Asegurarse de que productos se carga al editar
        } catch (err) {
            console.error(`Error fetching ventaX by ID ${selectedVentaId}:`, err);
            setError(err.message || `Error al cargar los datos de la VentaX.`);
@@ -439,7 +457,7 @@ function ListaVentasX() {
            setEditedVentaData({
                id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
                Estado: '', Pago: '', Subtotal: '', Total: '',
-               Cotizacion_Dolar: '', Total_ARS: '', items: []
+               Cotizacion_Dolar: '', Total_ARS: '', items: [] // Asegurado como array vacío
            });
        } finally {
            setLoadingEditData(false);
@@ -488,7 +506,10 @@ function ListaVentasX() {
    // The backend update handler currently does NOT use this calculated subtotal from the frontend.
    // Modified to also trigger Total ARS recalculation (Keep this logic)
    const handleEditedVentaItemsChange = (newItems) => {
-       const calculatedSubtotal = newItems.reduce((sum, item) => {
+        // Añadir comprobación de seguridad: asegurar que newItems es un array
+        const itemsArray = Array.isArray(newItems) ? newItems : [];
+
+       const calculatedSubtotal = itemsArray.reduce((sum, item) => {
             const itemTotal = parseFloat(item.Total_Item);
             return sum + (isNaN(itemTotal) ? 0 : itemTotal);
        }, 0).toFixed(2);
@@ -496,7 +517,7 @@ function ListaVentasX() {
        setEditedVentaData(prevState => {
             const updatedState = {
                 ...prevState,
-                items: newItems,
+                items: itemsArray, // Usar el array asegurado
                 // Optionally update Subtotal state in the edit form based on item changes
                 // Subtotal: calculatedSubtotal // Uncomment this if you want the Subtotal field to update visually during edit
             };
@@ -534,6 +555,7 @@ function ListaVentasX() {
 
       // VALIDACIÓN FRONTAL MEJORADA
       // Removed Nro_VentaX from validation
+      // Añadir comprobación de seguridad para items
       if (!editedVentaData.Fecha || !editedVentaData.Cliente_id || !editedVentaData.Estado || !editedVentaData.Pago || editedVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(editedVentaData.Cotizacion_Dolar)) || parseFloat(editedVentaData.Cotizacion_Dolar) <= 0) {
            // Updated validation message
            setError('Fecha, Cliente, Estado, Pago y Cotización Dólar (válida) son campos obligatorios.');
@@ -591,6 +613,7 @@ function ListaVentasX() {
           Cotizacion_Dolar: editedVentaData.Cotizacion_Dolar !== '' ? parseFloat(editedVentaData.Cotizacion_Dolar) : null, // Send Cotizacion_Dolar
           Total_ARS: editedVentaData.Total_ARS !== '' ? parseFloat(editedVentaData.Total_ARS) : null, // Send potentially recalculated Total ARS
           // **** INCLUIR ITEMS EN dataToSend ****
+          // Asegurado que editedVentaData.items es array por la validación
           items: editedVentaData.items.map(item => ({
               id: item.id || undefined, // Include ID if it exists (for existing items)
               type: item.type, // Send the type
@@ -612,6 +635,13 @@ function ListaVentasX() {
       try {
            // Call the async API function for updating
            // The backend expects the ID in the URL and data in the body
+           // *** VERIFICAR QUE electronAPI.updateVentaX ESTÉ DEFINIDO ANTES DE LLAMAR ***
+           if (!electronAPI || typeof electronAPI.updateVentaX !== 'function') {
+               console.error('electronAPI.updateVentaX is not defined or not a function.');
+               setError('Error interno: La función para actualizar Venta X no está disponible.');
+               setSavingData(false);
+               return;
+           }
           const response = await electronAPI.updateVentaX(dataToSend.id, dataToSend); // New API call (PUT /ventasx/:id)
            console.log('VentaX updated successfully:', response.success);
            // Handle success response
@@ -621,7 +651,7 @@ function ListaVentasX() {
           setEditedVentaData({
               id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
               Estado: '', Pago: '', Subtotal: '', Total: '',
-              Cotizacion_Dolar: '', Total_ARS: '', items: []
+              Cotizacion_Dolar: '', Total_ARS: '', items: [] // Asegurado como array vacío
           });
           setSelectedVentaId(null);
           fetchVentas(); // Refresh the list
@@ -642,7 +672,7 @@ function ListaVentasX() {
       setEditedVentaData({
           id: null, Fecha: '', Nro_VentaX: '', Cliente_id: '',
           Estado: '', Pago: '', Subtotal: '', Total: '',
-          Cotizacion_Dolar: '', Total_ARS: '', items: []
+          Cotizacion_Dolar: '', Total_ARS: '', items: [] // Asegurado como array vacío
       });
       setError(null);
   };
@@ -660,6 +690,14 @@ function ListaVentasX() {
       if (window.confirm(`¿Está seguro de eliminar la VentaX con ID ${selectedVentaId}? Esta acción eliminará los ítems y revertirá los cambios de stock para los productos vendidos.`)) {
           setDeletingVentaId(selectedVentaId);
           setError(null);
+
+          // *** VERIFICAR QUE electronAPI.deleteVentaX ESTÉ DEFINIDO ANTES DE LLAMAR ***
+          if (!electronAPI || typeof electronAPI.deleteVentaX !== 'function') {
+              console.error('electronAPI.deleteVentaX is not defined or not a function.');
+              setError('Error interno: La función para eliminar Venta X no está disponible.');
+              setDeletingVentaId(null);
+              return;
+          }
 
           try {
                // Call the async API function for deleting
@@ -690,18 +728,20 @@ function ListaVentasX() {
              Fecha: '', // Nro_VentaX is not in state anymore
              Cliente_id: '', Estado: '',
              Pago: '', Subtotal: '', Total: '',
-             Cotizacion_Dolar: '', Total_ARS: '', items: [],
+             Cotizacion_Dolar: '', Total_ARS: '', items: [], // Asegurado como array vacío
          });
         setSelectedVentaId(null);
         setEditingVentaId(null);
          fetchClients();
-         fetchProductos();
+         fetchProductos(); // Asegurarse de que productos se carga al abrir el formulario
+         // Eliminado el reset del clearItemsEditorErrorsTrigger
     };
 
     // Handle click on "Cancelar" button in the add form (Keep this)
     const handleCancelAdd = () => {
         setShowAddForm(false);
         setError(null);
+        // Eliminado el reset del clearItemsEditorErrorsTrigger
     };
 
     // NUEVO: Define the function to handle opening the Import Presupuesto modal (Keep this)
@@ -720,7 +760,8 @@ function ListaVentasX() {
         console.log("Presupuesto imported:", presupuestoData);
         console.log("Presupuesto items received:", presupuestoData.items);
 
-        const importedItems = (presupuestoData.items || []).map(item => {
+        // Añadir comprobación de seguridad: asegurar que presupuestoData.items es un array
+        const importedItems = (Array.isArray(presupuestoData.items) ? presupuestoData.items : []).map(item => {
             console.log("Mapping item before transformation:", item); // Log original item
 
             let mappedItem = {};
@@ -788,7 +829,7 @@ function ListaVentasX() {
                  Cliente_id: presupuestoData.Cliente_id || '', // Set client ID
                  // Estado: '', // Keep empty
                  // Pago: '', // Keep empty
-                 items: importedItems, // Set the imported items
+                 items: importedItems, // Set the imported items (asegurado como array)
                  // No IVA in VentasX
                  // Import Cotizacion_Dolar from budget
                  Cotizacion_Dolar: presupuestoData.Cotizacion_Dolar !== null ? String(presupuestoData.Cotizacion_Dolar) : '',
@@ -987,14 +1028,16 @@ function ListaVentasX() {
                     <VentaItemsEditorX
                          items={newVentaData.items}
                          onItemsChange={handleNewVentaItemsChange}
-                         productos={productos}
+                         productos={productos} // Asegurado que productos es array
                          savingData={savingData || loadingEditData || deletingVentaId !== null}
+                         // Eliminado el clearTrigger
                     />
-                    {productos.length === 0 && !loadingEditData && !loading && !savingData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos o no hay productos disponibles para los ítems.</p>}
+                    {/* Añadir comprobación de seguridad antes de acceder a length */}
+                    {(!Array.isArray(productos) || productos.length === 0) && !loadingEditData && !loading && !savingData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos o no hay productos disponibles para los ítems.</p>}
 
 
                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '20px' }}>
-                       <button type="submit" disabled={savingData || loadingEditData || deletingVentaId !== null || newVentaData.items.length === 0 || newVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(newVentaData.Cotizacion_Dolar)) || parseFloat(newVentaData.Cotizacion_Dolar) <= 0}>Agregar Venta X</button>
+                       <button type="submit" disabled={savingData || loadingEditData || deletingVentaId !== null || !Array.isArray(newVentaData.items) || newVentaData.items.length === 0 || newVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(newVentaData.Cotizacion_Dolar)) || parseFloat(newVentaData.Cotizacion_Dolar) <= 0}>Agregar Venta X</button>
                        <button type="button" onClick={handleCancelAdd} disabled={savingData || loadingEditData || deletingVentaId !== null} style={{ marginLeft: '10px', backgroundColor: '#616161', color: 'white', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)' }}>
                            Cancelar
                        </button>
@@ -1030,7 +1073,7 @@ function ListaVentasX() {
               {savingData && <p>Guardando cambios de venta X...</p>}
               {deletingVentaId && <p>Eliminando venta X...</p>}
 
-              {!loading && ventas.length > 0 && (
+              {!loading && Array.isArray(ventas) && ventas.length > 0 && ( // Añadir comprobación de seguridad para ventas
                 <table>
                   <thead>
                     <tr>
@@ -1047,7 +1090,8 @@ function ListaVentasX() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ventas.map((venta) => ( // Using 'venta' temporarily for iteration, but it's a VentaX object
+                    {/* Añadir comprobación de seguridad antes de mapear */}
+                    {Array.isArray(ventas) && ventas.map((venta) => ( // Using 'venta' temporarily for iteration, but it's a VentaX object
                       <React.Fragment key={venta.id}>
                         <tr
                             onClick={() => handleRowClick(venta.id)}
@@ -1182,18 +1226,21 @@ function ListaVentasX() {
 
                                             {/* VentaItemsEditorX para EDITAR */}
                                              <VentaItemsEditorX
-                                                  items={editedVentaData.items}
+                                                  items={editedVentaData.items} // Asegurado que items es array
                                                   onItemsChange={handleEditedVentaItemsChange}
-                                                  productos={productos}
+                                                  productos={productos} // Asegurado que productos es array
                                                   savingData={savingData || clientes.length === 0 || productos.length === 0}
+                                                  // Eliminado el clearTrigger
                                              />
-                                              {productos.length === 0 && loadingEditData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos o no hay productos disponibles para los ítems.</p>}
-                                               {productos.length === 0 && !loadingEditData && !loading && !savingData && editingVentaId !== null && <p style={{fontSize: '14px', color: '#ffcc80'}}>No hay productos disponibles. Agregue productos primero.</p>}
+                                              {/* Añadir comprobación de seguridad antes de acceder a length */}
+                                              {(!Array.isArray(productos) || productos.length === 0) && loadingEditData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos o no hay productos disponibles para los ítems.</p>}
+                                               {/* Añadir comprobación de seguridad antes de acceder a length */}
+                                               {(!Array.isArray(productos) || productos.length === 0) && !loadingEditData && !loading && !savingData && editingVentaId !== null && <p style={{fontSize: '14px', color: '#ffcc80'}}>No hay productos disponibles. Agregue productos primero.</p>}
 
 
                                             <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}>
                                                  {/* Botón Guardar Cambios */}
-                                                 <button type="submit" disabled={savingData || !editedVentaData.Cliente_id || editedVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(editedVentaData.Cotizacion_Dolar)) || parseFloat(editedVentaData.Cotizacion_Dolar) <= 0 || editedVentaData.items.length === 0}> {/* Added validation to submit button */}
+                                                 <button type="submit" disabled={savingData || !editedVentaData.Cliente_id || editedVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(editedVentaData.Cotizacion_Dolar)) || parseFloat(editedVentaData.Cotizacion_Dolar) <= 0 || !Array.isArray(editedVentaData.items) || editedVentaData.items.length === 0}> {/* Added validation to submit button */}
                                                      Guardar Cambios
                                                 </button>
                                                  <button type="button" onClick={handleCancelEdit} disabled={savingData} style={{ marginLeft: '10px', backgroundColor: '#616161', color: 'white', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)' }}>Cancelar Edición</button>
@@ -1208,7 +1255,9 @@ function ListaVentasX() {
                   </tbody>
                 </table>
               )}
-              {!loading && ventas.length === 0 && !error && <p>No hay ventas X registradas.</p>}
+              {!loading && Array.isArray(ventas) && ventas.length === 0 && !error && <p>No hay ventas X registradas.</p>} {/* Añadir comprobación de seguridad */}
+               {/* Mostrar un mensaje de error si ventas no es un array */}
+                {!Array.isArray(ventas) && !loading && <p style={{ color: '#ef9a9a' }}>Error interno: La lista de ventas no es válida.</p>}
           </>
       )}
 
