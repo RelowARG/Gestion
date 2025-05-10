@@ -1,4 +1,4 @@
-// src/components/ListaProductos.js (Modified for conditional fields based on Tipo)
+// src/components/ListaProductos.js (Frontend Filtering Implemented)
 import React, { useState, useEffect } from 'react';
 
 // Acceder a la API expuesta globalmente (ahora usa fetch/async)
@@ -17,16 +17,20 @@ const PRODUCT_TYPES = [
 
 
 function ListaProductos() {
-  const [productos, setProductos] = useState([]);
-  // Removed fetching/state for categories as they are not in the UI
-  // Removed fetching/state for latestDolarQuote as it's not needed for the new calculation
+  // --- MODIFIED STATE: Store all products and displayed products ---
+  const [allProductos, setAllProductos] = useState([]); // Stores the full list fetched initially
+  const [displayedProductos, setDisplayedProductos] = useState([]); // Stores the currently displayed (filtered) list
+  // --- END MODIFIED STATE ---
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedProductoId, setSelectedProductoId] = useState(null); // Selected row ID
   const [editingProductoId, setEditingProductoId] = useState(null); // ID of product being edited
 
-  // editedProductoData state keys match the new DB column names, ADD 'tipo'
+  // --- STATE FOR SEARCH ---
+  const [searchTerm, setSearchTerm] = useState('');
+  // --- END STATE ---
+
   const [editedProductoData, setEditedProductoData] = useState({
       id: null,
       codigo: '',
@@ -40,7 +44,7 @@ function ListaProductos() {
       material: '', // New field - Común a todos
       Buje: '', // New field - Común a todos
   });
-  // newProductoData state keys match the new DB column names for sending to backend, ADD 'tipo'
+
   const [newProductoData, setNewProductoData] = useState({
     codigo: '',
     Descripcion: '',
@@ -87,46 +91,57 @@ function ListaProductos() {
     };
 
 
-  // Function to fetch products using the new API
-  const fetchProductos = async () => { // Make the function async
-    setLoading(true);
-    setError(null);
-    setSelectedProductoId(null);
-    setEditingProductoId(null);
-    // Reset edited data structure with expected fetched data (new DB column names), ADD 'tipo'
-    setEditedProductoData({
-        id: null, codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '', // <-- Añadir tipo
-        costo_x_1000: '', costo_x_rollo: '', precio: '',
-        banda: '', material: '', Buje: '', // Reset new fields
-    });
+    // --- Function to fetch ALL products initially ---
+    const fetchAllProductos = async () => {
+      setLoading(true);
+      setError(null);
+      setSelectedProductoId(null);
+      setEditingProductoId(null);
+      setEditedProductoData({
+          id: null, codigo: '', Descripcion: '', tipo: '', eti_x_rollo: '',
+          costo_x_1000: '', costo_x_rollo: '', precio: '',
+          banda: '', material: '', Buje: '',
+      });
 
-    try {
-        // Call the async API function directly and await its result
-        const data = await electronAPI.getProductos(); // New API call
-        console.log('Productos cargados:', data);
-        setProductos(data); // Data is the direct response from the backend API
-    } catch (err) {
-        // Handle errors from the API call
-        console.error('Error fetching productos:', err);
-        // Check if the error has a message property, use a default message otherwise
-        setError(err.message || 'Error al cargar los productos.');
-        setProductos([]); // Clear the list on error
-    } finally {
-        setLoading(false); // Always set loading to false when the fetch is complete
-    }
-    // Removed all IPC listener setup and cleanup for fetching
-  };
+      try {
+          console.log('Fetching all products.');
+          // Call the backend API WITHOUT a search term to get the full list
+          const data = await electronAPI.getProductos(''); // Pass empty string for no search term
+          console.log('All products loaded:', data);
+          setAllProductos([...data]); // Store the full list
+          // No need to set displayedProducts here, the filtering effect will handle it
+      } catch (err) {
+          console.error('Error fetching all products:', err);
+          setError(err.message || 'Error al cargar los productos.');
+          setAllProductos([]);
+          setDisplayedProductos([]); // Clear displayed list on error
+      } finally {
+          setLoading(false);
+      }
+    };
 
-
-  // Effect to fetch initial data (products only)
+  // Effect to fetch ALL initial data on mount
   useEffect(() => {
-    // The fetchProductos function is now async and called directly
-    fetchProductos();
+    console.log('Initial fetchAllProductos useEffect triggered.');
+    fetchAllProductos();
+  }, []); // Empty dependency array: runs only once on mount
 
-    // Removed IPC listener setup and cleanup from here, as they are no longer needed for this effect
-    // Cleanup for IPC listeners related to this effect are no longer necessary.
-    // return () => { electronAPI.removeAllGetProductosListeners(); }; // REMOVED
-  }, []); // Empty dependency array means this effect runs once on mount
+
+   // --- NEW useEffect for Frontend Filtering ---
+   useEffect(() => {
+       console.log('Filtering products useEffect triggered. Search term:', searchTerm);
+       if (searchTerm === '') {
+           setDisplayedProductos(allProductos); // If search term is empty, show all products
+       } else {
+           const lowerCaseSearchTerm = searchTerm.toLowerCase();
+           const filtered = allProductos.filter(producto =>
+               (producto.codigo && String(producto.codigo).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (producto.Descripcion && String(producto.Descripcion).toLowerCase().includes(lowerCaseSearchTerm))
+           );
+           setDisplayedProductos(filtered); // Update displayed list with filtered results
+       }
+   }, [searchTerm, allProductos]); // Re-run effect when searchTerm or allProductos changes
+   // --- END NEW useEffect ---
 
 
    // --- Row Selection Logic --- (Keep this)
@@ -240,17 +255,15 @@ function ListaProductos() {
            // Aquí podrías agregar validación para costo_x_1000 específica para Rollo si fuera diferente
        } else {
            // Validaciones para tipos NO Rollo (si las hubiera aparte del costo principal)
-           // Por ahora, asumimos que solo el costo_x_1000 es el campo principal a validar
-           // si newProductoData.costo_x_1000 es obligatorio para todos los tipos excepto Rollo, validarlo aquí
            // (Actualmente la primera validación de costo_x_1000 ya lo cubre si no está vacío)
        }
        // --- Fin Validaciones Condicionales ---
 
-        // Validar Precio (común a todos)
-        if (newProductoData.precio !== '' && isNaN(parseFloat(newProductoData.precio))) {
-           setError('Precio debe ser un número válido.');
-           setSavingData(false);
-           return;
+       // Validar Precio (común a todos)
+       if (newProductoData.precio !== '' && isNaN(parseFloat(newProductoData.precio))) {
+          setError('Precio debe ser un número válido.');
+          setSavingData(false);
+          return;
        }
         // Validar otros campos comunes si son obligatorios
 
@@ -286,16 +299,6 @@ function ListaProductos() {
           Buje: newProductoData.Buje || null,
       };
 
-       // Opcional: Si quieres asegurarte de que el backend reciba explícitamente null para campos no aplicables,
-       // podrías limpiar más dataToSend aquí antes de enviarla, por ejemplo:
-       /*
-       if (dataToSend.tipo !== 'Rollo') {
-           dataToSend.eti_x_rollo = null;
-           dataToSend.costo_x_rollo = null;
-           // Si hubiera otros campos específicos de otros tipos, limpiarlos aquí
-       }
-       */
-
 
       try {
            // Call the async API function for adding
@@ -310,8 +313,7 @@ function ListaProductos() {
               banda: '', material: '', Buje: '', // Clear new fields
           });
           setShowAddForm(false); // Hide the add form after successful submission
-          fetchProductos(); // Refresh the list
-
+          fetchAllProductos(); // Refresh the full list after adding
       } catch (err) {
           // Handle errors (e.g., duplicate codigo)
           console.error('Error adding producto:', err);
@@ -320,7 +322,6 @@ function ListaProductos() {
       } finally {
           setSavingData(false); // Reset saving state
       }
-      // Removed IPC listener setup and cleanup for adding
   };
 
 
@@ -368,7 +369,6 @@ function ListaProductos() {
       } finally {
           setLoadingEditData(false);
       }
-      // Removed IPC listener setup and cleanup for fetching data for edit
    };
 
 
@@ -488,7 +488,6 @@ function ListaProductos() {
            Descripcion: editedProductoData.Descripcion,
            tipo: editedProductoData.tipo, // <-- Incluir tipo
            // Campos específicos de Rollo: enviar null si el tipo no es Rollo
-           // CORREGIDO: editedEditedData -> editedProductoData
            eti_x_rollo: editedProductoData.tipo === 'Rollo' && editedProductoData.eti_x_rollo !== '' ? parseFloat(editedProductoData.eti_x_rollo) : null,
            costo_x_rollo: calculatedCostoXRollo, // <-- El costo calculado (null si no es Rollo)
 
@@ -519,8 +518,7 @@ function ListaProductos() {
               banda: '', material: '', Buje: '', // Reset new fields
           });
           setSelectedProductoId(null); // Deselect after saving
-          fetchProductos(); // Refresh the list
-
+          fetchAllProductos(); // Refresh the full list after saving
       } catch (err) {
           // Handle errors (e.g., duplicate codigo)
            console.error('Error updating producto:', err);
@@ -528,7 +526,6 @@ function ListaProductos() {
       } finally {
           setSavingData(false); // Reset saving state
       }
-      // Removed IPC listener setup and cleanup for updating
   };
 
   const handleCancelEdit = () => {
@@ -560,17 +557,15 @@ function ListaProductos() {
                // Handle success response (e.g., { success: { id: ..., changes: ... } })
 
               setSelectedProductoId(null); // Deselect after deleting
-              fetchProductos(); // Refresh the list
-
+              fetchAllProductos(); // Refresh the full list after deleting
           } catch (err) {
-              // Handle errors (e.g., foreign key constraint violation)
+              // Handle errors (e.g., foreign key constraints)
                console.error(`Error deleting producto with ID ${selectedProductoId}:`, err);
                setError(err.message || `Error al eliminar el producto.`);
           } finally {
               setDeletingProductoId(null); // Reset deleting state
           }
       }
-      // Removed IPC listener setup and cleanup for deleting
    };
 
     // Handle click on "Nuevo Producto" button (Keep this)
@@ -745,6 +740,25 @@ function ListaProductos() {
           <>
               <h3>Productos Existentes</h3>
 
+               {/* --- SEARCH INPUT --- */}
+               <div style={{ marginBottom: '20px' }}>
+                  <label htmlFor="search-term">Buscar:</label>
+                  <input
+                    type="text"
+                    id="search-term"
+                    value={searchTerm}
+                    onChange={(e) => {
+                        console.log('Search term changed:', e.target.value);
+                        setSearchTerm(e.target.value); // Update only the search term state
+                        // The filtering will now happen in the useEffect
+                    }}
+                    placeholder="Buscar por código o descripción"
+                    disabled={loading || loadingEditData || savingData || deletingProductoId !== null}
+                   />
+               </div>
+               {/* --- END SEARCH INPUT --- */}
+
+
                {/* Edit and Delete Buttons */}
                <div style={{ margin: '20px 0' }}>
                    <button
@@ -769,52 +783,51 @@ function ListaProductos() {
               {deletingProductoId && <p>Eliminando producto...</p>}
 
 
-              {!loading && productos.length > 0 && (
+              {/* --- PRODUCTOS TABLE (Now using displayedProductos) --- */}
+              {!loading && displayedProductos.length > 0 && ( // Use displayedProductos here
                 <table>
                   <thead>
                     <tr>
                       <th>ID</th>
                       <th>Código</th>
                       <th>Descripción</th>
-                      <th>Tipo</th> {/* <-- NUEVA COLUMNA */}
-                      <th>Eti x Rollo</th> {/* Mostrar aunque solo aplique a Rollo, o ajustar visualización */}
-                      <th>Costo x 1.000</th> {/* Etiqueta genérica aquí en la tabla */}
-                      <th>Costo x Rollo</th> {/* Display the stored value */}
+                      <th>Tipo</th>
+                      <th>Eti x Rollo</th>
+                      <th>Costo x 1.000</th>
+                      <th>Costo x Rollo</th>
                       <th>Precio</th>
-                      <th>Banda</th> {/* New table header */}
-                      <th>Material</th> {/* New table header */}
-                      <th>Buje</th> {/* New table header */}
+                      <th>Banda</th>
+                      <th>Material</th>
+                      <th>Buje</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {productos.map((producto) => (
+                    {/* Map over displayedProductos */}
+                    {displayedProductos.map((producto) => (
                       <React.Fragment key={producto.id}>
                         <tr
                             onClick={() => handleRowClick(producto.id)}
-                            style={{ cursor: 'pointer', backgroundColor: selectedProductoId === producto.id ? '#424242' : 'transparent' }} // Use dark theme selected color
+                            style={{ cursor: 'pointer', backgroundColor: selectedProductoId === producto.id ? '#424242' : 'transparent' }}
                         >
                           <td>{producto.id}</td>
                           <td>{producto.codigo}</td>
                           <td>{producto.Descripcion}</td>
-                          <td>{producto.tipo}</td> {/* <-- Mostrar el tipo */}
+                          <td>{producto.tipo}</td>
                           <td>{producto.eti_x_rollo}</td>
-                           {/* En la tabla, puedes mostrar el Costo x 1.000. Ajusta si quieres mostrar otra columna o formato según el tipo */}
-                          <td>{producto.costo_x_1000}</td> {/* Muestra el valor almacenado en costo_x_1000 */}
-                          <td>{producto.costo_x_rollo}</td> {/* Muestra el valor almacenado en costo_x_rollo */}
+                          <td>{producto.costo_x_1000}</td>
+                          <td>{producto.costo_x_rollo}</td>
                           <td>{producto.precio}</td>
-                          <td>{producto.banda}</td> {/* Display new fields */}
+                          <td>{producto.banda}</td>
                           <td>{producto.material}</td>
                           <td>{producto.Buje}</td>
                         </tr>
-                        {/* Inline Edit Form Row - Conditionally rendered and only if not adding */}
+                        {/* Inline Edit Form Row */}
                         {editingProductoId === producto.id && !showAddForm && (
                             <tr>
-                                 {/* colSpan ajustado para la nueva columna 'Tipo' */}
-                                 <td colSpan="11"> {/* Ajustado colSpan a 11 */}
-                                    <div style={{ padding: '10px', border: '1px solid #424242', margin: '10px 0', backgroundColor: '#2c2c2c' }}> {/* Dark theme styles */}
+                                 <td colSpan="11">
+                                    <div style={{ padding: '10px', border: '1px solid #424242', margin: '10px 0', backgroundColor: '#2c2c2c' }}>
                                         <h4>Editar Producto (ID: {producto.id})</h4>
-                                        {/* Edit form uses new DB column names as keys */}
-                                        <form onSubmit={handleSaveEdit}> {/* Added onSubmit for form */}
+                                        <form onSubmit={handleSaveEdit}>
                                              <div>
                                                 <label htmlFor={`edit-codigo-${producto.id}`}>Código:</label>
                                                 <input type="text" id={`edit-codigo-${producto.id}`} name="codigo" value={editedProductoData.codigo || ''} onChange={handleEditFormChange} required disabled={savingData} />
@@ -824,7 +837,6 @@ function ListaProductos() {
                                                 <input type="text" id={`edit-descripcion-${producto.id}`} name="Descripcion" value={editedProductoData.Descripcion || ''} onChange={handleEditFormChange} required disabled={savingData} />
                                             </div>
 
-                                            {/* --- CAMPO: Tipo de Producto en Editar --- */}
                                             <div>
                                                 <label htmlFor={`edit-tipo-${producto.id}`}>Tipo:</label>
                                                 <select id={`edit-tipo-${producto.id}`} name="tipo" value={editedProductoData.tipo || ''} onChange={handleEditFormChange} required disabled={savingData}>
@@ -833,44 +845,33 @@ function ListaProductos() {
                                                     ))}
                                                 </select>
                                             </div>
-                                            {/* --- FIN CAMPO --- */}
 
-                                             {/* --- CAMPOS CONDICIONALES según el Tipo en Editar --- */}
-
-                                            {/* Campos que SOLO se muestran para el tipo "Rollo" en Editar */}
                                             {editedProductoData.tipo === 'Rollo' && (
                                                 <>
                                                     <div>
                                                         <label htmlFor={`edit-eti-rollo-${producto.id}`}>Eti x Rollo:</label>
                                                         <input type="number" id={`edit-eti-rollo-${producto.id}`} name="eti_x_rollo" value={editedProductoData.eti_x_rollo || ''} onChange={handleEditFormChange} disabled={savingData} min="0" step="any" />
                                                     </div>
-                                                    {/* Display calculated costo x rollo */}
                                                     <div>
-                                                         <label>Costo x rollo:</label> {/* Etiqueta fija */}
+                                                         <label>Costo x rollo:</label>
                                                          <input
                                                              type="text"
-                                                             value={calculateCostoPorRollo(editedProductoData.costo_x_1000, editedProductoData.eti_x_rollo)} /* Calculate and display */
+                                                             value={calculateCostoPorRollo(editedProductoData.costo_x_1000, editedProductoData.eti_x_rollo)}
                                                              readOnly
                                                              disabled={true}
-                                                             style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }} // Dark theme styles for readOnly input
+                                                             style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }}
                                                          />
                                                      </div>
                                                 </>
                                             )}
 
-                                             {/* Campo de Costo Principal (etiqueta cambia) - Se muestra para TODOS los tipos EXCEPTO cuando no se ha seleccionado tipo */}
                                              {editedProductoData.tipo !== '' && (
                                                   <div>
-                                                     {/* La etiqueta cambia dinámicamente según el tipo */}
                                                     <label htmlFor={`edit-costo-principal-${producto.id}`}>{getCostLabel(editedProductoData.tipo)}:</label>
-                                                    {/* Usamos 'costo_x_1000' como el campo donde se ingresa este valor principal */}
                                                     <input type="number" id={`edit-costo-principal-${producto.id}`} name="costo_x_1000" value={editedProductoData.costo_x_1000 || ''} onChange={handleEditFormChange} disabled={savingData} min="0" step="0.01" />
                                                   </div>
                                              )}
-                                             {/* --- FIN CAMPOS CONDICIONALES --- */}
 
-
-                                             {/* Campos comunes a todos los tipos */}
                                              <div>
                                                 <label htmlFor={`edit-precio-${producto.id}`}>Precio:</label>
                                                 <input type="number" id={`edit-precio-${producto.id}`} name="precio" value={editedProductoData.precio || ''} onChange={handleEditFormChange} disabled={savingData} min="0" step="0.01" />
@@ -889,9 +890,8 @@ function ListaProductos() {
                                              </div>
 
 
-                                            <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}> {/* Added flex for buttons */}
-                                                 <button type="submit" disabled={savingData}>Guardar Cambios</button> {/* Changed to type="submit" */}
-                                                  {/* Cancel edit button */}
+                                            <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}>
+                                                 <button type="submit" disabled={savingData}>Guardar Cambios</button>
                                                  <button type="button" onClick={handleCancelEdit} disabled={savingData} style={{ marginLeft: '10px', backgroundColor: '#616161', color: 'white', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)' }}>Cancelar Edición</button>
                                             </div>
                                         </form>
@@ -904,8 +904,13 @@ function ListaProductos() {
                   </tbody>
                 </table>
               )}
-              {!loading && productos.length === 0 && !error && <p>No hay productos registrados.</p>}\
-        </>
+              {/* --- END PRODUCTOS TABLE --- */}
+
+              {!loading && displayedProductos.length === 0 && !error && searchTerm === '' && <p>No hay productos registrados.</p>}
+              {/* Show message if no products found for the current search term */}
+              {!loading && displayedProductos.length === 0 && searchTerm !== '' && <p>No se encontraron productos para el término "{searchTerm}".</p>}
+              {/* Ensure we don't show "No hay productos registrados" when searching and finding nothing */}
+          </>
       )}
     </div>
   );
