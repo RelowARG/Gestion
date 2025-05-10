@@ -21,11 +21,10 @@ router.get('/', async (req, res) => {
   router.post('/', async (req, res) => {
     const { Empresa, Cuit, Contacto, Telefono, Mail, Direccion } = req.body;
 
-    // Validación básica
-    if (!Empresa || !Cuit) {
-      return res.status(400).json({ error: 'Empresa y Cuit son obligatorios.' });
+    // MODIFIED VALIDATION: Only Empresa is mandatory
+    if (!Empresa) {
+        return res.status(400).json({ error: 'La Empresa es obligatoria.' });
     }
-
     const sql = `INSERT INTO Clientes (Empresa, Cuit, Contacto, Telefono, Mail, Direccion) VALUES (?, ?, ?, ?, ?, ?)`;
     const values = [Empresa, Cuit, Contacto, Telefono, Mail, Direccion];
 
@@ -36,9 +35,11 @@ router.get('/', async (req, res) => {
       console.error('Error al agregar cliente:', error);
       let userMessage = 'Error interno del servidor al agregar cliente.';
       if (error.code === 'ER_DUP_ENTRY') {
+          // Keep the check for duplicate Cuit to ensure uniqueness
           if (error.message.includes('Cuit')) {
                userMessage = 'Error: El Cuit ingresado ya existe.';
           } else if (error.message.includes('Empresa')) {
+               // Keep the check for duplicate Empresa if needed, or remove if Empresa can be duplicated
                userMessage = 'Error: La empresa ingresada ya existe.';
           }
       }
@@ -73,8 +74,9 @@ router.get('/', async (req, res) => {
       const clienteId = req.params.id;
       const { Empresa, Cuit, Contacto, Telefono, Mail, Direccion } = req.body;
 
-       if (!Empresa || !Cuit) {
-           return res.status(400).json({ error: 'Empresa y Cuit son obligatorios.' });
+       // MODIFIED VALIDATION: Only Empresa is mandatory
+       if (!Empresa) {
+           return res.status(400).json({ error: 'La Empresa es obligatoria.' });
        }
 
       const sql = `
@@ -102,9 +104,11 @@ router.get('/', async (req, res) => {
           console.error(`Error al actualizar cliente con ID ${clienteId}:`, error);
            let userMessage = 'Error interno del servidor al actualizar cliente.';
            if (error.code === 'ER_DUP_ENTRY') {
+               // Keep the check for duplicate Cuit to ensure uniqueness
                if (error.message.includes('Cuit')) {
                     userMessage = 'Error: El Cuit ingresado ya existe.';
                } else if (error.message.includes('Empresa')) {
+                    // Keep the check for duplicate Empresa if needed, or remove if Empresa can be duplicated
                     userMessage = 'Error: La empresa ingresada ya existe.';
                }
            }

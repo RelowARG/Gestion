@@ -158,16 +158,23 @@ function ListaClientes() {
     e.preventDefault();
     setError(null);
 
-    if (!newClient.Empresa || !newClient.Cuit) { // Use new column names for validation
-      setError('Empresa y Cuit son campos obligatorios.');
+    // MODIFIED VALIDATION: Cuit is no longer required
+    if (!newClient.Empresa) { // Use new column names for validation
+      setError('La Empresa es obligatoria.');
       return;
     }
 
     setSavingData(true); // Set saving state
 
     try {
+        // Prepare data for submission - send null if Cuit is an empty string
+        const dataToSend = {
+            ...newClient,
+            Cuit: newClient.Cuit === '' ? null : newClient.Cuit // Send null if empty string
+        };
+
         // Call the async API function for adding
-        const response = await electronAPI.addClient(newClient); // New API call
+        const response = await electronAPI.addClient(dataToSend); // Use dataToSend
         console.log('Client added successfully:', response.success);
 
         // Clear form using new column names
@@ -249,17 +256,23 @@ function ListaClientes() {
       setSavingData(true);
       setError(null);
 
-      // Basic validation using new DB column names from state
-      if (!editedClientData.Empresa || !editedClientData.Cuit) {
-           setError('Empresa y Cuit son campos obligatorios.');
+      // MODIFIED VALIDATION: Cuit is no longer required
+      if (!editedClientData.Empresa) {
+           setError('Empresa es obligatoria.');
            setSavingData(false);
            return;
       }
 
       try {
+          // Prepare data for submission - send null if Cuit is an empty string
+          const dataToSend = {
+              ...editedClientData,
+              Cuit: editedClientData.Cuit === '' ? null : editedClientData.Cuit // Send null if empty string
+          };
+
           // Call the async API function for updating
            // The backend expects the ID in the URL and data in the body
-          const response = await electronAPI.updateClient(editedClientData.id, editedClientData); // New API call
+          const response = await electronAPI.updateClient(dataToSend.id, dataToSend); // Use dataToSend
            console.log('Client updated successfully:', response.success);
 
           setEditingClientId(null);
@@ -372,7 +385,8 @@ function ListaClientes() {
                   </div>
                   <div>
                     <label htmlFor="cuit">Cuit:</label>
-                    <input type="text" id="cuit" name="Cuit" value={newClient.Cuit} onChange={handleInputChange} required disabled={savingData || loadingEditData || deletingClientId !== null} />
+                    {/* REMOVED required attribute */}
+                    <input type="text" id="cuit" name="Cuit" value={newClient.Cuit} onChange={handleInputChange} disabled={savingData || loadingEditData || deletingClientId !== null} />
                   </div>
                   <div>
                     <label htmlFor="contacto">Contacto:</label>
@@ -515,7 +529,8 @@ function ListaClientes() {
                                               </div>
                                               <div>
                                                   <label htmlFor={`edit-cuit-${cliente.id}`}>Cuit:</label>
-                                                  <input type="text" id={`edit-cuit-${cliente.id}`} name="Cuit" value={editedClientData.Cuit || ''} onChange={handleEditFormChange} required disabled={savingData} />
+                                                  {/* REMOVED required attribute */}
+                                                  <input type="text" id={`edit-cuit-${cliente.id}`} name="Cuit" value={editedClientData.Cuit || ''} onChange={handleEditFormChange} disabled={savingData} />
                                               </div>
                                               <div>
                                                   <label htmlFor={`edit-contacto-${cliente.id}`}>Contacto:</label>

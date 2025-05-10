@@ -11,8 +11,16 @@ import { format } from 'date-fns'; // Import the format function from date-fns
 const electronAPI = window.electronAPI;
 
 function ListaPresupuestos() {
-    // Estado para la lista principal de presupuestos
-    const [presupuestos, setPresupuestos] = useState([]);
+    // --- MODIFIED STATE: Store all budgets and displayed budgets ---
+    // REMOVED the original 'presupuestos' state
+    const [allPresupuestos, setAllPresupuestos] = useState([]); // Stores the full list fetched initially
+    const [displayedPresupuestos, setDisplayedPresupuestos] = useState([]); // Stores the currently displayed (filtered) list
+    // --- END MODIFIED STATE ---
+
+    // --- NEW STATE FOR SEARCH ---
+    const [searchTerm, setSearchTerm] = useState('');
+    // --- END NEW STATE ---
+
     // Estado para la lista de clientes (necesaria para el selector en el formulario)
     const [clientes, setClientes] = useState([]);
     // Estado para la lista de productos (necesaria para el selector de ítems de producto)
@@ -138,23 +146,46 @@ function ListaPresupuestos() {
         console.log('[ListaPresupuestos] Fetching all budgets...');
         setLoading(true);
         setError(null);
-        setSelectedPresupuestoId(null);
-        setEditingPresupuestoId(null);
-        setShowForm(false); // Ocultar formulario al recargar la lista
+        // No deseleccionamos el presupuesto seleccionado aquí si el modo de edición o adición no está activo,
+        // para que los detalles de ventas se mantengan visibles al refrescar la lista (si el cliente sigue ahí).
+        // Si estamos añadiendo o editando, sí deseleccionamos para evitar inconsistencias.
+        if (!showForm && editingPresupuestoId === null) {
+           // Don't change selectedPresupuestoId
+        } else {
+            setSelectedPresupuestoId(null);
+            setEditingPresupuestoId(null);
+        }
+
 
         try {
             // Usar await con la nueva función API
             const budgetsData = await electronAPI.getPresupuestos();
             console.log('Presupuestos cargados:', budgetsData);
-            setPresupuestos(budgetsData);
+            setAllPresupuestos([...budgetsData]); // Store the full list
+            setDisplayedPresupuestos([...budgetsData]); // Initially display all
+
+            // If there was a selected budget before refreshing and it's still in the list, maintain the selection
+            if (selectedPresupuestoId && budgetsData.find(p => p.id === selectedPresupuestoId)) {
+                 // selectedPresupuestoId state is already set, no need to do anything
+                 console.log(`[ListaPresupuestos] Kept selected budget ID: ${selectedPresupuestoId}`);
+            } else if (selectedPresupuestoId !== null) {
+                 // If the selected budget no longer exists in the list or there was no prior selection,
+                 // and selectedPresupuestoId was not null before, clear the selection.
+                setSelectedPresupuestoId(null);
+                 console.log('[ListaPresupuestos] Cleared selected budget because it was not found after refresh.');
+            }
+
         } catch (err) {
             console.error('Error fetching presupuestos:', err);
             setError(err.message || 'Error al cargar los presupuestos.');
-            setPresupuestos([]); // Limpiar la lista en caso de error
+            setAllPresupuestos([]); // Limpiar la lista completa en caso de error
+            setDisplayedPresupuestos([]); // Limpiar la lista mostrada en caso de error
+            setSelectedPresupuestoId(null); // Clear selection on error
         } finally {
             setLoading(false); // Ocultar loading al finalizar
         }
     };
+
 
     // NUEVO: Función async para obtener la lista de clientes
     const fetchClientes = async () => {
@@ -199,6 +230,26 @@ function ListaPresupuestos() {
              // Si hubieras usado `on` listeners para algo más, los limpiarías aquí.
         };
     }, []); // Se ejecuta solo una vez al montar el componente
+
+
+   // --- NEW useEffect for Frontend Filtering ---
+   // This effect runs whenever the search term or the full budget list changes
+   useEffect(() => {
+       console.log('Filtering budgets useEffect triggered. Search term:', searchTerm);
+       if (searchTerm === '') {
+           setDisplayedPresupuestos(allPresupuestos); // If search term is empty, show all budgets
+       } else {
+           const lowerCaseSearchTerm = searchTerm.toLowerCase();
+           // Filter based on Numero, Nombre_Cliente, Cuit_Cliente
+           const filtered = allPresupuestos.filter(presupuesto =>
+               (presupuesto.Numero && String(presupuesto.Numero).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (presupuesto.Nombre_Cliente && String(presupuesto.Nombre_Cliente).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (presupuesto.Cuit_Cliente && String(presupuesto.Cuit_Cliente).toLowerCase().includes(lowerCaseSearchTerm))
+           );
+           setDisplayedPresupuestos(filtered); // Update displayed list with filtered results
+       }
+   }, [searchTerm, allPresupuestos]); // Re-run effect when searchTerm or allPresupuestos changes
+   // --- END NEW useEffect ---
 
 
     // --- Row Selection & Form Visibility ---
@@ -835,10 +886,33 @@ function ListaPresupuestos() {
             {!showForm && (
                 <>
                     <h3>Presupuestos Existentes</h3>
+
+                    {/* --- NEW SEARCH INPUT --- */}
+                    <div style={{ marginBottom: '20px' }}>
+                       <label htmlFor="search-term">Buscar:</label>
+                       <input
+                         type="text"
+                         id="search-term"
+                         value={searchTerm}
+                         onChange={(e) => {
+                             console.log('Budget search term changed:', e.target.value);
+                             setSearchTerm(e.target.value); // Update only the search term state
+                             // Filtering happens in the useEffect
+                         }}
+                         placeholder="Buscar por número, cliente, CUIT, etc."
+                         disabled={loading || loadingFormData || savingData || deletingPresupuestoId !== null || loadingShare}
+                        />
+                    </div>
+                    {/* --- END NEW SEARCH INPUT --- */}
+
+
+                    {/* Mensajes de estado (cargando, eliminando) */}
                     {loading && <p>Cargando presupuestos...</p>}
                     {deletingPresupuestoId && <p>Eliminando presupuesto...</p>}
 
-                    {!loading && presupuestos.length > 0 && (
+                    {/* Tabla de Presupuestos (Ahora usa displayedPresupuestos) */}
+                    {/* Use displayedPresupuestos for rendering */}
+                    {!loading && displayedPresupuestos.length > 0 && (
                         <table>
                             <thead>
                                 <tr>
@@ -853,7 +927,8 @@ function ListaPresupuestos() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {presupuestos.map((presupuesto) => (
+                                {/* Map over displayedPresupuestos */}
+                                {displayedPresupuestos.map((presupuesto) => (
                                     <tr
                                         key={presupuesto.id}
                                         onClick={() => handleRowClick(presupuesto.id)}
@@ -873,7 +948,11 @@ function ListaPresupuestos() {
                             </tbody>
                         </table>
                     )}
-                     {!loading && presupuestos.length === 0 && !error && <p>No hay presupuestos registrados.</p>}
+                     {/* Mostrar mensajes cuando no hay presupuestos */}
+                     {/* Check both loading state and displayedPresupuestos length */}
+                     {!loading && displayedPresupuestos.length === 0 && searchTerm === '' && <p>No hay presupuestos registrados.</p>}
+                     {/* Show message if no budgets found for the current search term */}
+                     {!loading && displayedPresupuestos.length === 0 && searchTerm !== '' && <p>No se encontraron presupuestos para el término "{searchTerm}".</p>}
                 </>
             )}
         </div>
