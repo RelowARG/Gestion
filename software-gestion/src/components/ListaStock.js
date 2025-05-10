@@ -1,16 +1,27 @@
-// src/components/ListaStock.js (Modified for Backend API Communication)
+// src/components/ListaStock.js (Frontend Filtering Implemented)
 import React, { useState, useEffect } from 'react';
 
 // Acceder a la API expuesta globalmente (ahora usa fetch/async)
 const electronAPI = window.electronAPI;
 
 function ListaStock() {
-  const [stockItems, setStockItems] = useState([]);
+  // --- MODIFIED STATE: Store all stock items and displayed stock items ---
+  const [allStockItems, setAllStockItems] = useState([]); // Stores the full list fetched initially
+  const [displayedStockItems, setDisplayedStockItems] = useState([]); // Stores the currently displayed (filtered) list
+  // --- END MODIFIED STATE ---
+
+  // Removed the original 'stockItems' state as we now use allStockItems and displayedStockItems
+
   const [productos, setProductos] = useState([]); // To populate product dropdown
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedStockId, setSelectedStockId] = useState(null);
   const [editingStockId, setEditingStockId] = useState(null);
+
+  // --- NEW STATE FOR SEARCH ---
+  const [searchTerm, setSearchTerm] = useState('');
+  // --- END NEW STATE ---
+
 
   const [newStockData, setNewStockData] = useState({
       Producto_id: '', // Will be selected from dropdown
@@ -33,7 +44,7 @@ function ListaStock() {
   const [showAddForm, setShowAddForm] = useState(false);
 
 
-  // Function to fetch stock items using the new API
+  // --- Function to fetch ALL stock items initially and after changes ---
   const fetchStock = async () => { // Make the function async
     setLoading(true);
     setError(null);
@@ -43,24 +54,26 @@ function ListaStock() {
     setEditedStockData({ id: null, Cantidad: '' });
 
     try {
-        // Call the async API function and await its result
-        const data = await electronAPI.getStock(); // New API call (GET /stock)
-        console.log('Stock loaded:', data);
-        setStockItems(data); // Data is the direct response from the backend API
+        // Call the async API function to get ALL stock items
+        const data = await electronAPI.getStock(); // Fetch all stock (backend doesn't filter)
+        console.log('All Stock loaded:', data);
+        setAllStockItems([...data]); // Store the full list
+        // The filtering useEffect will automatically update displayedStockItems
+        // No need to setDisplayedStockItems here
 
     } catch (err) {
         // Handle errors from the API call
         console.error('Error fetching stock:', err);
         setError(err.message || 'Error al cargar el stock.');
-        setStockItems([]); // Clear the list on error
-         setSelectedStockId(null); // Clear selection on error
+        setAllStockItems([]); // Clear the full list on error
+        setDisplayedStockItems([]); // Clear displayed list on error
+        setSelectedStockId(null); // Clear selection on error
     } finally {
         setLoading(false); // Always set loading to false
     }
-    // Removed all IPC listener setup and cleanup for fetching stock
   };
 
-   // Function to fetch products (for the dropdown) using the new API
+   // Function to fetch products (for the dropdown) using the new API (Keep this)
    const fetchProducts = async () => { // Make the function async
        try {
            const data = await electronAPI.getProductos(); // New API call (GET /productos)
@@ -71,21 +84,38 @@ function ListaStock() {
             // Decide how to handle this error. Could set a specific product error state
             // setProductError(err.message || 'Error al cargar productos para el dropdown.');
        }
-       // No loading state controlled here, as main loading is for stock items
-       // No finally block for loading status for products fetch
-       // Removed IPC listener setup and cleanup for products fetch
    };
 
 
-  // Effect to fetch initial data (stock and products)
+  // Effect to fetch ALL initial data (stock and products)
   useEffect(() => {
-    // Call the async fetch functions directly
+    console.log('Initial fetchStock and fetchProducts useEffect triggered.');
     fetchStock();
     fetchProducts(); // Fetch products for the dropdown
-
-    // Removed IPC listener setup and cleanup from here
-    // return () => { ... }; // REMOVED
   }, []); // Empty dependency array means this effect runs once on mount
+
+
+   // --- NEW useEffect for Frontend Filtering ---
+   // This effect runs whenever the search term or the full stock list changes
+   useEffect(() => {
+       console.log('Filtering stock useEffect triggered. Search term:', searchTerm);
+       if (searchTerm === '') {
+           setDisplayedStockItems(allStockItems); // If search term is empty, show all stock items
+       } else {
+           const lowerCaseSearchTerm = searchTerm.toLowerCase();
+           // Filter based on product details linked to the stock item
+           const filtered = allStockItems.filter(item =>
+               (item.codigo && String(item.codigo).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (item.Descripcion && String(item.Descripcion).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (item.banda && String(item.banda).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (item.material && String(item.material).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (item.Buje && String(item.Buje).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (item.Cantidad && String(item.Cantidad).toLowerCase().includes(lowerCaseSearchTerm)) // Optional: allow searching by quantity too
+           );
+           setDisplayedStockItems(filtered); // Update displayed list with filtered results
+       }
+   }, [searchTerm, allStockItems]); // Re-run effect when searchTerm or allStockItems changes
+   // --- END NEW useEffect ---
 
 
    // --- Row Selection Logic --- (Keep this)
@@ -139,11 +169,10 @@ function ListaStock() {
            // Call the async API function for adding/updating stock
            const response = await electronAPI.addOrUpdateStock(dataToSend); // New API call (POST /stock)
            console.log('Stock added/updated successfully:', response.success);
-           // Handle success response (e.g., { success: { id: ..., changes: ... } })
 
            setNewStockData({ Producto_id: '', Cantidad: '' }); // Clear form
            setShowAddForm(false); // Hide the add form
-           fetchStock(); // Refresh the list
+           fetchStock(); // Refresh the FULL list of stock items
            // Optional: Re-fetch products if adding stock might affect product data display elsewhere
            // fetchProducts();
 
@@ -154,7 +183,6 @@ function ListaStock() {
       } finally {
           setSavingData(false);
       }
-      // Removed IPC listener setup and cleanup for adding stock
   };
 
 
@@ -176,7 +204,6 @@ function ListaStock() {
        });
 
        setLoadingEditData(false); // No backend fetch needed just to populate quantity for edit
-       // Removed IPC listener setup and cleanup for fetching data for edit
    };
 
 
@@ -213,13 +240,12 @@ function ListaStock() {
            // Call the async API function for updating stock quantity by ID
            const response = await electronAPI.updateStockQuantity(dataToSend.id, { Cantidad: dataToSend.Cantidad }); // New API call (PUT /stock/:id)
            console.log('Stock updated successfully:', response.success);
-           // Handle success response (e.g., { success: { id: ..., changes: ... } })
 
            setEditingStockId(null); // Close edit form
            setEditedStockData({ id: null, Cantidad: '' }); // Clear edit data
            setSelectedStockId(null); // Deselect after saving
            setSelectedStockProductDetails(null); // Clear selected product details
-           fetchStock(); // Refresh the list
+           fetchStock(); // Refresh the FULL list
 
       } catch (err) {
            console.error('Error updating stock:', err);
@@ -227,7 +253,6 @@ function ListaStock() {
       } finally {
           setSavingData(false);
       }
-      // Removed IPC listener setup and cleanup for updating
   };
 
   // Handle cancelling edit mode (Keep this)
@@ -254,20 +279,18 @@ function ListaStock() {
               // Call the async API function for deleting a stock entry by ID
               const response = await electronAPI.deleteStock(selectedStockId); // New API call (DELETE /stock/:id)
               console.log(`Stock entry with ID ${selectedStockId} deleted successfully.`, response.success);
-               // Handle success response
 
               setSelectedStockId(null); // Deselect after deleting
               setSelectedStockProductDetails(null);
-              fetchStock(); // Refresh the list
+              fetchStock(); // Refresh the FULL list
 
           } catch (err) {
-               console.error(`Error deleting stock entry with ID ${selectedStockId}:`, err);
+               console.error(`Error al eliminar entrada de stock con ID ${selectedStockId}:`, err);
                setError(err.message || `Error al eliminar la entrada de stock.`);
           } finally {
               setDeletingStockId(null);
           }
       }
-      // Removed IPC listener setup and cleanup for deleting
    };
 
 
@@ -353,6 +376,24 @@ function ListaStock() {
           <>
               <h3>Stock Existente</h3>
 
+               {/* --- NEW SEARCH INPUT --- */}
+               <div style={{ marginBottom: '20px' }}>
+                  <label htmlFor="search-term">Buscar:</label>
+                  <input
+                    type="text"
+                    id="search-term"
+                    value={searchTerm}
+                    onChange={(e) => {
+                        console.log('Stock search term changed:', e.target.value);
+                        setSearchTerm(e.target.value); // Update only the search term state
+                        // Filtering happens in the useEffect
+                    }}
+                    placeholder="Buscar por código, descripción, banda, etc."
+                    disabled={loading || loadingEditData || savingData || deletingStockId !== null}
+                   />
+               </div>
+               {/* --- END NEW SEARCH INPUT --- */}
+
                {/* Edit and Delete Buttons */}
                <div style={{ margin: '20px 0' }}>
                    <button
@@ -376,22 +417,24 @@ function ListaStock() {
               {savingData && <p>Guardando cambios de stock...</p>}
               {deletingStockId && <p>Eliminando entrada de stock...</p>}
 
-              {!loading && stockItems.length > 0 && (
-                <table>
+              {/* Stock List Table (Now using displayedStockItems) */}
+              {!loading && displayedStockItems.length > 0 && ( // Use displayedStockItems here
+                <table key={searchTerm}> {/* Optional: Add key prop here if needed for rendering issues */}
                   <thead>
                     <tr>
                       <th>ID Stock</th> {/* ID of the stock entry */}
                       <th>Código Prod.</th>
                       <th>Descripción</th>
                       <th>Eti x Rollo</th>
-                      <th>Banda</th>   {/* New column */}
-                      <th>Material</th> {/* New column */}
-                      <th>Buje</th>     {/* New column */}
+                      <th>Banda</th>
+                      <th>Material</th>
+                      <th>Buje</th>
                       <th>Cantidad</th>     {/* Stock Quantity */}
                     </tr>
                   </thead>
                   <tbody>
-                    {stockItems.map((stockItem) => (
+                    {/* Map over displayedStockItems */}
+                    {displayedStockItems.map((stockItem) => (
                       <React.Fragment key={stockItem.id}>
                         <tr
                             onClick={() => handleRowClick(stockItem)} // Pass the entire item for product details
@@ -401,7 +444,7 @@ function ListaStock() {
                           <td>{stockItem.codigo}</td>
                           <td>{stockItem.Descripcion}</td>
                           <td>{stockItem.eti_x_rollo}</td>
-                          <td>{stockItem.banda}</td>   {/* Display new fields */}
+                          <td>{stockItem.banda}</td>
                           <td>{stockItem.material}</td>
                           <td>{stockItem.Buje}</td>
                           <td>{stockItem.Cantidad}</td> {/* Display Stock Quantity */}
@@ -428,15 +471,14 @@ function ListaStock() {
                                          )}
 
                                         {/* Edit form for Quantity */}
-                                        <form onSubmit={handleSaveEdit}> {/* Added onSubmit */}
+                                        <form onSubmit={handleSaveEdit}>
                                              <div>
                                                 <label htmlFor={`edit-cantidad-${stockItem.id}`}>Cantidad:</label>
-                                                <input type="number" id={`edit-cantidad-${stockItem.id}`} name="Cantidad" value={editedStockData.Cantidad || ''} onChange={handleEditFormChange} required disabled={savingData} min="0" step="any" /> {/* Added step="any" */}
+                                                <input type="number" id={`edit-cantidad-${stockItem.id}`} name="Cantidad" value={editedStockData.Cantidad || ''} onChange={handleEditFormChange} required disabled={savingData} min="0" step="any" />
                                             </div>
 
                                             <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}>
-                                                 <button type="submit" disabled={savingData}>Guardar Cambios</button> {/* Changed to type="submit" */}
-                                                  {/* Cancel edit button */}
+                                                 <button type="submit" disabled={savingData}>Guardar Cambios</button>
                                                  <button type="button" onClick={handleCancelEdit} disabled={savingData} style={{ marginLeft: '10px', backgroundColor: '#616161', color: 'white', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)' }}>Cancelar Edición</button>
                                             </div>
                                         </form>
@@ -449,7 +491,9 @@ function ListaStock() {
                   </tbody>
                 </table>
               )}
-              {!loading && stockItems.length === 0 && !error && <p>No hay stock registrado.</p>}
+              {!loading && displayedStockItems.length === 0 && !error && searchTerm === '' && <p>No hay stock registrado.</p>}
+              {/* Show message if no stock items found for the current search term */}
+              {!loading && displayedStockItems.length === 0 && searchTerm !== '' && <p>No se encontraron entradas de stock para el término "{searchTerm}".</p>}
           </>
       )}
     </div>
