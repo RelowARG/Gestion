@@ -41,4 +41,5 @@ temp/
 gestion.db
 
 out/
-software-gestion-backend/server.js
+software-gestion-backend/.gitignore
+
