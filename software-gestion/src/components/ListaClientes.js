@@ -1,4 +1,4 @@
-// src/components/ListaClientes.js (Modified for Backend API Communication)
+// src/components/ListaClientes.js (Frontend Filtering Implemented)
 import React, { useState, useEffect } from 'react';
 import ClientSalesDetails from './ClientSalesDetails'; // Import the new component
 
@@ -6,8 +6,17 @@ import ClientSalesDetails from './ClientSalesDetails'; // Import the new compone
 const electronAPI = window.electronAPI;
 
 function ListaClientes() {
-  const [clientes, setClientes] = useState([]);
-  // newClient state uses the new DB column names directly
+  // --- MODIFIED STATE: Store all clients and displayed clients ---
+  const [allClientes, setAllClientes] = useState([]); // Stores the full list fetched initially
+  const [displayedClientes, setDisplayedClientes] = useState([]); // Stores the currently displayed (filtered) list
+  // --- END MODIFIED STATE ---
+
+  // --- NEW STATE FOR SEARCH ---
+  const [searchTerm, setSearchTerm] = useState('');
+  // --- END NEW STATE ---
+
+  // Removed the original 'clientes' state as we now use allClientes and displayedClientes
+
   const [newClient, setNewClient] = useState({
     Empresa: '',
     Cuit: '',
@@ -56,7 +65,7 @@ function ListaClientes() {
   }, []);
 
 
-  // Function to fetch clients using the new API
+  // --- Function to fetch ALL clients initially and after changes ---
   const fetchClients = async () => { // Make the function async
     setLoading(true);
     setError(null);
@@ -76,10 +85,12 @@ function ListaClientes() {
     });
 
     try {
-        // Call the async API function directly and await its result
-        const data = await electronAPI.getClients(); // New API call
-        console.log('Clientes cargados:', data);
-        setClientes(data); // Data is the direct response from the backend API
+        // Call the async API function to get ALL clients
+        const data = await electronAPI.getClients(); // Fetch all clients (backend doesn't filter)
+        console.log('All clients loaded:', data);
+        setAllClientes([...data]); // Store the full list
+        // The filtering useEffect will automatically update displayedClientes
+        // No need to setDisplayedClientes here
 
         // If there was a selected client before refreshing and it's still in the list, maintain the selection
         if (selectedClientId && data.find(c => c.id === selectedClientId)) {
@@ -98,23 +109,42 @@ function ListaClientes() {
         console.error('Error fetching clients:', err);
         // Check if the error has a message property, use a default message otherwise
         setError(err.message || 'Error al cargar los clientes.');
-        setClientes([]); // Clear the list on error
-         setSelectedClientId(null); // Clear selection on error
+        setAllClientes([]); // Clear the full list on error
+        setDisplayedClientes([]); // Clear displayed list on error
+        setSelectedClientId(null); // Clear selection on error
     } finally {
         setLoading(false); // Always set loading to false when the fetch is complete (success or error)
     }
-    // Removed all IPC listener setup and cleanup for fetching, as it's now Promise-based
   };
 
-  // Effect to fetch clients when the component mounts or selectedClientId changes
+  // Effect to fetch ALL clients when the component mounts
   useEffect(() => {
-    // The fetchClients function is now async and called directly
+    console.log('Initial fetchClients useEffect triggered.');
     fetchClients();
+  }, []); // Empty dependency array: runs only once on mount
 
-    // Removed IPC listener setup and cleanup from here, as they are no longer needed for this effect
-    // Cleanup for IPC listeners related to this effect are no longer necessary.
-    // return () => { electronAPI.removeAllGetClientsListeners(); }; // REMOVED
-  }, [selectedClientId]); // Dependencia en selectedClientId para refetch cuando se deselecciona manualmente
+
+   // --- NEW useEffect for Frontend Filtering ---
+   // This effect runs whenever the search term or the full client list changes
+   useEffect(() => {
+       console.log('Filtering clients useEffect triggered. Search term:', searchTerm);
+       if (searchTerm === '') {
+           setDisplayedClientes(allClientes); // If search term is empty, show all clients
+       } else {
+           const lowerCaseSearchTerm = searchTerm.toLowerCase();
+           // Filter based on Empresa, Cuit, Contacto, Telefono, Mail, Direccion
+           const filtered = allClientes.filter(client =>
+               (client.Empresa && String(client.Empresa).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (client.Cuit && String(client.Cuit).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (client.Contacto && String(client.Contacto).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (client.Telefono && String(client.Telefono).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (client.Mail && String(client.Mail).toLowerCase().includes(lowerCaseSearchTerm)) ||
+               (client.Direccion && String(client.Direccion).toLowerCase().includes(lowerCaseSearchTerm))
+           );
+           setDisplayedClientes(filtered); // Update displayed list with filtered results
+       }
+   }, [searchTerm, allClientes]); // Re-run effect when searchTerm or allClientes changes
+   // --- END NEW useEffect ---
 
 
   // Handle form input changes (for adding new client) (Keep this)
@@ -130,7 +160,6 @@ function ListaClientes() {
 
     if (!newClient.Empresa || !newClient.Cuit) { // Use new column names for validation
       setError('Empresa y Cuit son campos obligatorios.');
-      // setSavingData(false); // This will be set to false in finally block
       return;
     }
 
@@ -140,15 +169,11 @@ function ListaClientes() {
         // Call the async API function for adding
         const response = await electronAPI.addClient(newClient); // New API call
         console.log('Client added successfully:', response.success);
-         // Handle success response from the backend (which includes the new ID)
-        // The backend should return { success: { id: newId } } on success
-        // You might want to use the new ID for something here if needed.
-        // const newClientId = response.success.id; // Extract the new ID
 
         // Clear form using new column names
         setNewClient({ Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '' });
         setShowAddForm(false); // Hide the add form after successful submission
-        fetchClients(); // Refresh the list (will attempt to keep selection based on useEffect)
+        fetchClients(); // Refresh the FULL list after adding
 
     } catch (err) {
         // Handle errors from the API call (e.g., duplicate Cuit)
@@ -158,7 +183,6 @@ function ListaClientes() {
     } finally {
         setSavingData(false); // Reset saving state when the operation is complete
     }
-    // Removed IPC listener setup and cleanup for adding
   };
 
   // --- Row Selection Logic --- (Keep this)
@@ -169,11 +193,9 @@ function ListaClientes() {
        } else if (selectedClientId === clientId) {
            // If the already selected row is clicked again, deselect it
            setSelectedClientId(null);
-           // No need to reset editedClientData or editingClientId here, handled by handleCancelEdit or selecting another row
        } else {
            // Select the clicked row
            setSelectedClientId(clientId);
-           // If editing another row, cancel it (handled by the first check)
            // Reset edited data structure for the newly selected client (will be populated on edit click)
            setEditedClientData({
                id: null, Empresa: '', Cuit: '', Contacto: '', Telefono: '', Mail: '', Direccion: '',
@@ -212,7 +234,6 @@ function ListaClientes() {
       } finally {
           setLoadingEditData(false); // Always set loading to false
       }
-      // Removed IPC listener setup and cleanup for fetching data for edit
    };
 
 
@@ -240,8 +261,6 @@ function ListaClientes() {
            // The backend expects the ID in the URL and data in the body
           const response = await electronAPI.updateClient(editedClientData.id, editedClientData); // New API call
            console.log('Client updated successfully:', response.success);
-           // Handle success response (e.g., { success: { id: ..., changes: ... } })
-           // You might want to use the response data here if needed.
 
           setEditingClientId(null);
            // Reset edited data structure
@@ -250,7 +269,7 @@ function ListaClientes() {
           });
           // Keep selectedClientId as is, so the sales details remain visible (or could deselect)
           // setSelectedClientId(null); // Uncomment to deselect after saving
-          fetchClients(); // Refresh the list (re-fetches, will attempt to keep selection based on useEffect)
+          fetchClients(); // Refresh the FULL list after saving
 
       } catch (err) {
           // Handle errors (e.g., duplicate Cuit)
@@ -259,7 +278,6 @@ function ListaClientes() {
       } finally {
           setSavingData(false); // Reset saving state
       }
-      // Removed IPC listener setup and cleanup for updating
   };
 
   // Handle cancelling edit mode (Keep this)
@@ -287,10 +305,9 @@ function ListaClientes() {
               // Call the async API function for deleting
               const response = await electronAPI.deleteClient(selectedClientId); // New API call
                console.log(`Client with ID ${selectedClientId} deleted successfully.`, response.success);
-               // Handle success response (e.g., { success: { id: ..., changes: ... } })
 
               setSelectedClientId(null); // Deselect after deleting
-              fetchClients(); // Refresh the list
+              fetchClients(); // Refresh the FULL list after deleting
 
           } catch (err) {
               // Handle errors (e.g., foreign key constraint violation)
@@ -299,7 +316,6 @@ function ListaClientes() {
           } finally {
               setDeletingClientId(null); // Reset deleting state
           }
-          // Removed IPC listener setup and cleanup for deleting
       }
   };
 
@@ -317,7 +333,6 @@ function ListaClientes() {
   const handleCancelAdd = () => {
       setShowAddForm(false);
       setError(null); // Clear any errors
-      // Optional: Reset newClient state here too, or rely on handleNewClientClick
   };
 
 
@@ -331,7 +346,6 @@ function ListaClientes() {
           // Adjusted flex properties for equal size when split
           flex: selectedClientId === null ? '1 1 100%' : '1 1 50%', // 100% if no client, 50% if client selected
           minWidth: selectedClientId === null ? 'auto' : '350px', // Allow reasonable min-width when split
-          // Removed overflowY and maxHeight from the pane div
           paddingRight: selectedClientId === null ? '0' : '10px', // Add some padding if content might be near the edge, remove when full width
           borderRight: selectedClientId === null ? 'none' : '1px solid #424242', // Optional: Add a separator line
           transition: 'flex-basis 0.3s ease-in-out', // Smooth transition
@@ -399,6 +413,24 @@ function ListaClientes() {
             <>
                 <h3>Clientes Existentes</h3>
 
+                {/* --- NEW SEARCH INPUT --- */}
+                <div style={{ marginBottom: '20px' }}>
+                   <label htmlFor="search-term">Buscar:</label>
+                   <input
+                     type="text"
+                     id="search-term"
+                     value={searchTerm}
+                     onChange={(e) => {
+                         console.log('Client search term changed:', e.target.value);
+                         setSearchTerm(e.target.value); // Update only the search term state
+                         // Filtering happens in the useEffect
+                     }}
+                     placeholder="Buscar por empresa, cuit, contacto, etc."
+                     disabled={loading || loadingEditData || savingData || deletingClientId !== null}
+                    />
+                </div>
+                {/* --- END NEW SEARCH INPUT --- */}
+
                  {/* Edit and Delete Buttons */}
                  <div style={{ margin: '20px 0' }}>
                      <button
@@ -423,9 +455,9 @@ function ListaClientes() {
                 {deletingClientId && <p>Eliminando cliente...</p>}
 
 
-                {/* Client List Table */}
-                {!loading && clientes.length > 0 && (
-                  <table>
+                {/* Client List Table (Now using displayedClientes) */}
+                {!loading && displayedClientes.length > 0 && ( // Use displayedClientes here
+                  <table key={searchTerm}> {/* Optional: Add key prop here if needed for rendering issues */}
                     <thead>
                       <tr>
                         {/* Conditionally render the ID column header */}
@@ -441,7 +473,8 @@ function ListaClientes() {
                       </tr>
                     </thead>
                     <tbody>
-                      {clientes.map((cliente) => (
+                      {/* Map over displayedClientes */}
+                      {displayedClientes.map((cliente) => (
                         <React.Fragment key={cliente.id}>
                           <tr
                               onClick={() => handleRowClick(cliente.id)}
@@ -516,7 +549,9 @@ function ListaClientes() {
                     </tbody>
                   </table>
                 )}
-                {!loading && clientes.length === 0 && !error && <p>No hay clientes registrados.</p>}
+                {!loading && displayedClientes.length === 0 && !error && searchTerm === '' && <p>No hay clientes registrados.</p>}
+                 {/* Show message if no clients found for the current search term */}
+                 {!loading && displayedClientes.length === 0 && searchTerm !== '' && <p>No se encontraron clientes para el término "{searchTerm}".</p>}
             </>
         )}
       </div> {/* End of Left Pane */}
@@ -537,13 +572,14 @@ function ListaClientes() {
                {/* ClientSalesDetails component now handles showing sales/ventasX and the detail modal internally */}
                <ClientSalesDetails
                    clientId={selectedClientId}
-                   clientName={clientes.find(c => c.id === selectedClientId)?.Empresa} // Pass client name for display
+                   // Find the selected client from the *full* list to get their name
+                   clientName={allClientes.find(c => c.id === selectedClientId)?.Empresa} // Pass client name for display
                />
           </div>
       )}
 
         {/* Message when no client is selected and not adding */}
-        {selectedClientId === null && !showAddForm && !loading && clientes.length > 0 && (
+        {selectedClientId === null && !showAddForm && !loading && displayedClientes.length > 0 && ( // Check displayedClientes length
              // This div will take up the space where the right pane *would* be if a client was selected
              <div style={{
                  // Use the same flex basis as the right pane when active
@@ -559,16 +595,6 @@ function ListaClientes() {
              }}>
                 <p>Seleccione un cliente de la lista para ver sus ventas.</p>
              </div>
-        )}
-
-        {/* Optional: Message when the list is empty and not adding */}
-        {!loading && clientes.length === 0 && !error && !showAddForm && (
-             // This message should likely span the full width when the list is empty.
-             // It might be better placed outside the flex container or handled differently
-             // if you want the "No hay clientes registrados" message to always appear below the title spanning full width.
-             // For now, let's keep it simple and place it below the main flex container,
-             // or modify the left pane to show this message when the list is empty.
-             null // Removed from here, it's handled in the left pane's !showAddForm block
         )}
 
     </div>
