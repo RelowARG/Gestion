@@ -470,6 +470,7 @@ function ListaClientes() {
 
 
                 {/* Client List Table (Now using displayedClientes) */}
+                {/* Removed the container div with overflowX: 'auto' */}
                 {!loading && displayedClientes.length > 0 && ( // Use displayedClientes here
                   <table key={searchTerm}> {/* Optional: Add key prop here if needed for rendering issues */}
                     <thead>
@@ -478,12 +479,13 @@ function ListaClientes() {
                         {selectedClientId === null && <th>ID</th>}
                         <th>Empresa</th>
                         <th>Cuit</th>
-                        {/* Conditionally hide columns based on windowWidth - Adjusted Breakpoints for Earlier Hiding */}
-                        {/* These values are increased to hide columns earlier as the window shrinks. */}
-                        {windowWidth > 900 && <th>Contacto</th>} {/* Hide Contacto below 900px */}
-                        {windowWidth > 950 && <th>Teléfono</th>} {/* Hide Teléfono below 950px */}
-                        {windowWidth > 1100 && <th>Mail</th>}     {/* Hide Mail below 1100px */}
-                        {windowWidth > 1200 && <th>Dirección</th>} {/* Hide Dirección below 1200px */}
+                        {/* Conditionally hide columns based on windowWidth and selectedClientId */}
+                        {windowWidth > 900 && <th>Contacto</th>}
+                        {windowWidth > 950 && <th>Teléfono</th>}
+                        {/* <<< Modified conditions for Mail and Direccion headers */}
+                        {windowWidth > 1100 && selectedClientId === null && <th>Mail</th>}
+                        {windowWidth > 1200 && selectedClientId === null && <th>Dirección</th>}
+                        {/* >>> End modified conditions */}
                       </tr>
                     </thead>
                     <tbody>
@@ -499,11 +501,13 @@ function ListaClientes() {
                             {/* Display using new DB column names from the fetched data */}
                             <td>{cliente.Empresa}</td>
                             <td>{cliente.Cuit}</td>
-                            {/* Conditionally hide cells based on windowWidth, matching the headers */}
+                            {/* Conditionally hide cells based on windowWidth and selectedClientId, matching the headers */}
                             {windowWidth > 900 && <td>{cliente.Contacto}</td>}
                             {windowWidth > 950 && <td>{cliente.Telefono}</td>}
-                            {windowWidth > 1100 && <td>{cliente.Mail}</td>}
-                            {windowWidth > 1200 && <td>{cliente.Direccion}</td>}
+                            {/* <<< Modified conditions for Mail and Direccion cells */}
+                            {windowWidth > 1100 && selectedClientId === null && <td>{cliente.Mail}</td>}
+                            {windowWidth > 1200 && selectedClientId === null && <td>{cliente.Direccion}</td>}
+                            {/* >>> End modified conditions */}
                           </tr>
                           {/* Inline Edit Form Row - Only show if THIS client is being edited and not adding */}
                           {editingClientId === cliente.id && !showAddForm && (
@@ -511,13 +515,15 @@ function ListaClientes() {
                                    {/* Adjust colspan dynamically based on which columns are visible */}
                                    {/* Calculate visible columns: optional ID + Empresa + Cuit + conditional columns */}
                                    <td colSpan={
-                                       (selectedClientId === null ? 1 : 0) +
-                                       1 + // Empresa
-                                       1 + // Cuit
+                                       (selectedClientId === null ? 1 : 0) + // ID column
+                                       1 + // Empresa (always visible)
+                                       1 + // Cuit (always visible)
                                        (windowWidth > 900 ? 1 : 0) + // Contacto
-                                       (windowWidth > 950 ? 1 : 0) + // Telefono
-                                       (windowWidth > 1100 ? 1 : 0) + // Mail
-                                       (windowWidth > 1200 ? 1 : 0)   // Direccion
+                                       (windowWidth > 950 ? 1 : 0) + // Teléfono
+                                       // <<< Modified colSpan calculation for Mail and Direccion
+                                       (windowWidth > 1100 && selectedClientId === null ? 1 : 0) + // Mail
+                                       (windowWidth > 1200 && selectedClientId === null ? 1 : 0)   // Dirección
+                                       // >>> End modified colSpan calculation
                                    }>
                                       <div style={{ padding: '10px', border: '1px solid #424242', margin: '10px 0', backgroundColor: '#2c2c2c' }}> {/* Dark theme styles */}
                                           <h4>Editar Cliente (ID: {cliente.id})</h4>
@@ -606,11 +612,34 @@ function ListaClientes() {
                  alignItems: 'center',
                  justifyContent: 'center',
                  textAlign: 'center',
-                 borderLeft: '1px solid #424242', // Add a separator line
+                 borderLeft: '1px solid #424242',
+                 // Added styles to match ListaProveedores message div (removed overflowX as columns will hide)
+                 overflowY: 'auto',
+                 maxHeight: 'calc(100vh - 120px)',
              }}>
-                <p>Seleccione un cliente de la lista para ver sus ventas.</p>
+                <p>Seleccione un cliente de la lista para ver sus ventas.</p> {/* Legend remains for Clients */}
              </div>
         )}
+
+         {/* Message when no clients are loaded at all (initial state or error) */}
+         {/* This handles the case where displayedClientes.length is 0 because allClientes is empty */}
+         {!loading && displayedClientes.length === 0 && searchTerm === '' && !error && selectedClientId === null && !showAddForm && (
+              <div style={{
+                  // This div takes full width since there's no list or right pane
+                   flex: '1 1 100%',
+                   minWidth: 'auto',
+                   paddingRight: '0',
+                   borderRight: 'none',
+                   boxSizing: 'border-box',
+                   display: 'flex',
+                   alignItems: 'center',
+                   justifyContent: 'center',
+                   textAlign: 'center',
+              }}>
+                  <p>No hay clientes registrados.</p>
+              </div>
+         )}
+
 
     </div>
   );
