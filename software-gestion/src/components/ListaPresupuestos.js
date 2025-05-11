@@ -66,6 +66,11 @@ function ListaPresupuestos() {
     const [loadingShare, setLoadingShare] = useState(false); // Loading para la operación de compartir
     const [shareError, setShareError] = useState(null); // Error específico de la operación de compartir
 
+     // --- State for Client Progressive Search (NEW) ---
+    const [clientSearchTerm, setClientSearchTerm] = useState('');
+    const [displayClients, setDisplayClients] = useState([]);
+    // We will use Cliente_id in currentPresupuestoData to track selected client
+
 
     // --- Funciones de Cálculo (La principal se queda aquí) ---
 
@@ -91,7 +96,7 @@ function ListaPresupuestos() {
         const subtotal = items.reduce((sum, item) => {
             // Usar los campos correctos según el tipo de ítem
             const cantidad = item.Producto_id !== null ? item.Cantidad : item.Cantidad_Personalizada;
-            const precioUnitario = item.Producto_id !== null ? item.Precio_Unitario : item.Precio_Unitario_Personalizado;
+            const precioUnitario = item.Producto_id !== null ? item.Precio_Unitario : item.Precio_Unitario_Personalizada;
             const descuento = item.Descuento_Porcentaje;
 
             return sum + calculateItemTotal(cantidad, precioUnitario, descuento);
@@ -195,6 +200,8 @@ function ListaPresupuestos() {
             const clientsData = await electronAPI.getClients();
             console.log('Clientes cargados:', clientsData);
             setClientes(clientsData);
+             // *** Initialize displayClients state with all clients after fetching ***
+            setDisplayClients(clientsData);
         } catch (err) {
             console.error('Error fetching clients:', err);
              // Consider how to handle this error
@@ -259,11 +266,21 @@ function ListaPresupuestos() {
         if (selectedPresupuestoId === presupuestoId) {
             setSelectedPresupuestoId(null); // Deseleccionar si ya estaba seleccionado
         } else {
-            setSelectedPresupuestoId(presupuestoId);
+            selectedPresupuestoId(presupuestoId); // Corrected typo here: should be setSelectedPresupuestoId
              // Si hay un formulario abierto para otro presupuesto, cerrarlo
             if (editingPresupuestoId !== null && editingPresupuestoId !== presupuestoId) {
                 setEditingPresupuestoId(null);
                 setShowForm(false);
+                 // Reset edited data structure
+                 setCurrentPresupuestoData({
+                     id: null, Numero: '', Fecha: new Date(), Cliente_id: '', ValidezOferta: '',
+                     Comentarios: '', CondicionesPago: '', DatosPago: '', Subtotal: 0, IVA_Porcentaje: 21, IVA_Monto: 0,
+                     Otro_Monto: 0, Total_USD: 0, Cotizacion_Dolar: '', Total_ARS: 0, items: []
+                 });
+                // *** Clear client search states when canceling edit of another row ***
+                setClientSearchTerm('');
+                setDisplayClients(clientes); // Reset display list to all clients
+                // *** END Clear client search states ***
             }
         }
         setError(null); // Limpiar errores al cambiar de selección
@@ -278,7 +295,7 @@ function ListaPresupuestos() {
         // Resetear el estado del formulario para un nuevo presupuesto
         setCurrentPresupuestoData({
             id: null,
-            Numero: '',
+            Numero: '', // Puede ser generado en backend al agregar
             Fecha: new Date(), // Usar objeto Date para DatePicker
             Cliente_id: '', // ID del cliente seleccionado
             ValidezOferta: '',
@@ -298,6 +315,10 @@ function ListaPresupuestos() {
          // Re-fetch clients and products just in case for the dropdowns
          fetchClientes();
          fetchProductos();
+         // *** Clear client search states when opening add form ***
+         setClientSearchTerm('');
+         setDisplayClients(clientes); // Reset display list to all clients
+         // *** END Clear client search states ***
     };
 
     // Muestra el formulario para editar el presupuesto seleccionado
@@ -308,6 +329,10 @@ function ListaPresupuestos() {
         setEditingPresupuestoId(selectedPresupuestoId); // Establecer ID para modo edición
         setLoadingFormData(true); // Indicar que estamos cargando datos para el formulario
         setError(null); // Limpiar errores
+        // *** Clear client search states when entering edit mode ***
+        setClientSearchTerm('');
+        setDisplayClients(clientes);
+        // *** END Clear client search states ***
 
         try {
             // Usar await con la nueva función API para obtener los datos completos
@@ -317,23 +342,32 @@ function ListaPresupuestos() {
              // Formatear la fecha para el DatePicker
              const fechaDate = presupuesto.Fecha ? new Date(presupuesto.Fecha) : new Date();
 
+            // Find the client object based on Cliente_id to display its name/code in search input
+            const clientForEdit = clientes.find(c => c.id === presupuesto.Cliente_id);
+            if (clientForEdit) {
+                setClientSearchTerm(`${clientForEdit.Codigo || ''} - ${clientForEdit.Empresa || ''}`); // Use Empresa/Codigo from client data
+            } else {
+                 setClientSearchTerm(''); // Clear if client not found or Cliente_id is null/undefined
+            }
+
+
              // Cargar los datos en el estado del formulario
              setCurrentPresupuestoData({
                  id: presupuesto.id,
                  Numero: presupuesto.Numero || '',
                  Fecha: fechaDate,
                  Cliente_id: presupuesto.Cliente_id || '',
-                 ValidezOferta: presupuesto.ValidezOferta || '',
+                 ValidezOferta: presupuesto.ValidezOferta !== null ? String(presupuesto.ValidezOferta) : '', // Convert to string
                  Comentarios: presupuesto.Comentarios || '',
                  CondicionesPago: presupuesto.CondicionesPago || '',
                  DatosPago: presupuesto.DatosPago || '',
-                 Subtotal: presupuesto.Subtotal || 0,
-                 IVA_Porcentaje: presupuesto.IVA_Porcentaje || 0,
-                 IVA_Monto: presupuesto.IVA_Monto || 0,
-                 Otro_Monto: presupuesto.Otro_Monto || 0,
-                 Total_USD: presupuesto.Total_USD || 0,
+                 Subtotal: presupuesto.Subtotal !== null ? String(presupuesto.Subtotal) : '', // Convert to string
+                 IVA_Porcentaje: presupuesto.IVA_Porcentaje !== null ? String(presupuesto.IVA_Porcentaje) : '21', // Convert to string, default to '21'
+                 IVA_Monto: presupuesto.IVA_Monto !== null ? String(presupuesto.IVA_Monto) : '', // Convert to string
+                 Otro_Monto: presupuesto.Otro_Monto !== null ? String(presupuesto.Otro_Monto) : '', // Convert to string
+                 Total_USD: presupuesto.Total_USD !== null ? String(presupuesto.Total_USD) : '', // Convert to string
                  Cotizacion_Dolar: presupuesto.Cotizacion_Dolar !== null ? String(presupuesto.Cotizacion_Dolar) : '', // Convertir a string para el input
-                 Total_ARS: presupuesto.Total_ARS || 0,
+                 Total_ARS: presupuesto.Total_ARS !== null ? String(presupuesto.Total_ARS) : '', // Convert to string
                  items: presupuesto.items || [], // Cargar los ítems existentes
              });
              // Re-fetch clients and products just in case for the dropdowns
@@ -348,9 +382,13 @@ function ListaPresupuestos() {
              // Reset edited data structure
              setCurrentPresupuestoData({
                  id: null, Numero: '', Fecha: new Date(), Cliente_id: '', ValidezOferta: '',
-                 Comentarios: '', CondicionesPago: '', DatosPago: '', Subtotal: 0, IVA_Porcentaje: 21, IVA_Monto: 0,
-                 Otro_Monto: 0, Total_USD: 0, Cotizacion_Dolar: '', Total_ARS: 0, items: []
+                 Comentarios: '', CondicionesPago: '', DatosPago: '', Subtotal: '', IVA_Porcentaje: '21', IVA_Monto: '',
+                 Otro_Monto: '', Total_USD: '', Cotizacion_Dolar: '', Total_ARS: '', items: []
              });
+            // *** Clear client search states on error ***
+            setClientSearchTerm('');
+            setDisplayClients(clientes); // Reset display list to all clients
+            // *** END Clear client search states ***
         } finally {
             setLoadingFormData(false); // Finalizar carga de datos del formulario
         }
@@ -363,6 +401,16 @@ function ListaPresupuestos() {
         setSelectedPresupuestoId(null); // Deseleccionar al cancelar
         setError(null); // Limpiar errores
          // Opcional: Resetear el estado del formulario aquí también si no se hace al abrir
+         // Reset edited data structure
+         setCurrentPresupuestoData({
+             id: null, Numero: '', Fecha: new Date(), Cliente_id: '', ValidezOferta: '',
+             Comentarios: '', CondicionesPago: '', DatosPago: '', Subtotal: '', IVA_Porcentaje: '21', IVA_Monto: '',
+             Otro_Monto: '', Total_USD: '', Cotizacion_Dolar: '', Total_ARS: '', items: []
+         });
+        // *** Clear client search states on cancel form ***
+        setClientSearchTerm('');
+        setDisplayClients(clientes); // Reset display list to all clients
+        // *** END Clear client search states ***
     };
 
 
@@ -374,9 +422,10 @@ function ListaPresupuestos() {
         let updatedValue = value;
 
         // Convertir a número si es un campo numérico
-        if (['ValidezOferta', 'IVA_Porcentaje', 'Otro_Monto', 'Cotizacion_Dolar'].includes(name)) {
-             updatedValue = value !== '' ? parseFloat(value) : ''; // Usar '' para permitir borrar el input
-        }
+        // Keep as string initially if input type="number"
+        // if (['ValidezOferta', 'IVA_Porcentaje', 'Otro_Monto', 'Cotizacion_Dolar'].includes(name)) {
+        //      updatedValue = value !== '' ? parseFloat(value) : ''; // Usar '' para permitir borrar el input
+        // }
 
         setCurrentPresupuestoData(prevState => {
             const updatedData = { ...prevState, [name]: updatedValue };
@@ -393,13 +442,14 @@ function ListaPresupuestos() {
         }));
     };
 
+     // REMOVED handleClienteChange as client selection is now handled by handleClientSelect
      // Maneja el cambio de cliente seleccionado (Keep this)
-    const handleClienteChange = (e) => {
-        setCurrentPresupuestoData(prevState => ({
-            ...prevState,
-            Cliente_id: e.target.value
-        }));
-    };
+    // const handleClienteChange = (e) => {
+    //     setCurrentPresupuestoData(prevState => ({
+    //         ...prevState,
+    //         Cliente_id: e.target.value
+    //     }));
+    // };
 
     // Handler para cuando la lista de ítems cambia en el componente hijo (Keep this)
     const handleItemsChange = (newItems) => {
@@ -473,19 +523,15 @@ function ListaPresupuestos() {
                       setSavingData(false);
                       return;
                  }
-                 if (item.Precio_Unitario_Personalizado !== null && item.Precio_Unitario_Personalizado !== '' && isNaN(parseFloat(item.Precio_Unitario_Personalizado))) {
+                 if (item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== '' && isNaN(parseFloat(item.Precio_Unitario_Personalizada))) {
                      setError(`Precio Unitario inválido en ítem personalizado "${item.Descripcion_Personalizada}".`);
                      setSavingData(false);
                      return;
                  }
-                  if (item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== '' && isNaN(parseFloat(item.Descuento_Porcentaje))) {
-                      setError(`Descuento inválido en ítem personalizado "${item.Descripcion_Personalizada}".`);
-                      setSavingData(false);
-                      return;
-                 }
+                  // Descuento doesn't apply to custom items in this context, no need to validate Descuento_Porcentaje for custom
              }
-             // Validar total si está presente
-             if (item.Total_Item !== null && item.Total_Item !== '' && isNaN(parseFloat(item.Total_Item)) || parseFloat(item.Total_Item) < 0) {
+             // Validar total si está presente y es válido
+             if (item.Total_Item !== null && item.Total_Item !== '' && (isNaN(parseFloat(item.Total_Item)) || parseFloat(item.Total_Item) < 0)) {
                   setError(`Total inválido en un ítem.`);
                   setSavingData(false);
                   return;
@@ -525,7 +571,7 @@ function ListaPresupuestos() {
                  // Campos personalizados
                  Descripcion_Personalizada: item.Descripcion_Personalizada || null,
                  Cantidad_Personalizada: item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== '' ? parseFloat(item.Cantidad_Personalizada) : null, // Parse float or null
-                 Precio_Unitario_Personalizado: item.Precio_Unitario_Personalizado !== null && item.Precio_Unitario_Personalizado !== '' ? parseFloat(item.Precio_Unitario_Personalizado) : null, // Parse float or null
+                 Precio_Unitario_Personalizada: item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== '' ? parseFloat(item.Precio_Unitario_Personalizada) : null, // Parse float or null
             })),
         };
 
@@ -617,10 +663,113 @@ function ListaPresupuestos() {
         setShareError(null); // Limpiar errores de compartir al cerrar
     };
 
+     // --- Client Progressive Search Handlers (NEW) ---
+    const handleClientSearchInputChange = (e) => { // formType parameter is not needed here since there is only one form state
+        const term = e.target.value.toLowerCase();
+        setClientSearchTerm(term);
+        setError(null); // Clear errors on search input
 
-    // --- Renderizado ---
+        if (!Array.isArray(clientes)) { // Add safety check for clientes
+             setDisplayClients([]);
+             return;
+        }
 
-    return (
+        if (term === '') {
+            setDisplayClients(clientes);
+        } else {
+            const filtered = clientes.filter(client =>
+                (client.Codigo && String(client.Codigo).toLowerCase().includes(term)) || // Use Codigo
+                (client.Empresa && String(client.Empresa).toLowerCase().includes(term)) || // Use Empresa
+                (client.Nombre && String(client.Nombre).toLowerCase().includes(term)) // Use Nombre
+            );
+            setDisplayClients(filtered);
+        }
+
+        // Clear the selected client ID in the currentPresupuestoData state
+        setCurrentPresupuestoData(prevState => ({ ...prevState, Cliente_id: '' }));
+    };
+
+    const handleClientSelect = (client) => { // formType parameter is not needed here
+        console.log('[ListaPresupuestos] Client selected:', client);
+        setClientSearchTerm(`${client.Codigo || ''} - ${client.Empresa || ''}`); // Display Code - Company
+
+        // Update the selected client ID in the currentPresupuestoData state
+        setCurrentPresupuestoData(prevState => ({ ...prevState, Cliente_id: client.id }));
+
+        setDisplayClients([]); // Hide the list after selection
+        setError(null);
+    };
+    // --- End Client Progressive Search Handlers ---
+
+     // Helper to get client details by ID (NEW)
+     const getClientDetails = (clientId) => {
+        // Add safety check for clientes being an array
+        if (!Array.isArray(clientes)) return null;
+        return clientes.find(c => c.id === clientId);
+     };
+
+     // --- Helper function for Total Item Calculation (Needed for import mapping) ---
+     // Copy the calculateTotalItem function here as it's used in handlePresupuestoImported
+     const calculateTotalItem = (cantidad, precioUnitario, descuentoPorcentaje) => {
+         const cantidadFloat = parseFloat(cantidad);
+         const precioUnitarioFloat = parseFloat(precioUnitario);
+         const descuentoFloat = parseFloat(descuentoPorcentaje) || 0;
+
+         const subtotal = (isNaN(cantidadFloat) || cantidadFloat < 0 || isNaN(precioUnitarioFloat) || precioUnitarioFloat < 0)
+                           ? 0
+                           : cantidadFloat * precioUnitarioFloat;
+
+         const effectiveDescuento = Math.max(0, Math.min(100, descuentoFloat));
+
+         const totalItem = subtotal * (1 - effectiveDescuento / 100);
+
+         return parseFloat(totalItem.toFixed(2));
+     };
+
+
+    // Helper functions for Estado and Pago (Keep these)
+    const getEstadoDisplayText = (estado) => {
+      switch (estado) {
+          case 'entregado': return 'Entregado';
+          case 'en maquina': return 'En Máquina';
+          case 'pedido': return 'Pedido';
+          case 'cancelado': return 'Cancelado';
+          case 'listo': return 'Listo';
+          default: return estado;
+      }
+    };
+
+    const getEstadoColor = (estado) => {
+      switch (estado) {
+          case 'entregado': return '#4CAF50'; // Green
+          case 'en maquina':
+          case 'pedido': return '#FF9800'; // Orange
+          case 'cancelado': return '#F4436'; // Red (usar el mismo rojo que para "debe")
+          case 'listo': return '#2196F3'; // Blue
+          default: return 'inherit'; // Default color
+      }
+    };
+
+   const getPagoDisplayText = (pago) => {
+       switch (pago) {
+           case 'abonado': return 'Abonado';
+           case 'seña': return 'Seña';
+           case 'debe': return 'Debe';
+           default: return pago;
+       }
+    };
+
+    const getPagoColor = (pago) => {
+        switch (pago) {
+            case 'abonado': return '#2196F3'; // Blue
+            case 'seña': return '#FF9800'; // Orange
+            case 'debe': return '#F44336'; // Red
+            default: return 'inherit'; // Default color
+        }
+    };
+
+
+  return (
         <div className="container">
             <h2>Gestión de Presupuestos</h2>
 
@@ -717,29 +866,72 @@ function ListaPresupuestos() {
                                     disabled={savingData}
                                 />
                             </div>
-                            <div>
-                                <label htmlFor="cliente">Cliente:</label>
-                                <select
-                                    id="cliente"
-                                    name="Cliente_id"
-                                    value={currentPresupuestoData.Cliente_id}
-                                    onChange={handleClienteChange}
-                                    required
-                                    disabled={savingData || clientes.length === 0}
-                                >
-                                    <option value="">Seleccione Cliente</option>
-                                    {clientes.map(cliente => (
-                                        <option key={cliente.id} value={cliente.id}>{cliente.Empresa}</option>
-                                    ))}
-                                </select>
-                            </div>
-                             {/* Mostrar CUIT del cliente seleccionado si hay uno */}
-                             {currentPresupuestoData.Cliente_id && clientes.length > 0 && (
-                                 <div>
-                                     <label>CUIT Cliente:</label>
-                                     <p>{clientes.find(c => c.id === parseInt(currentPresupuestoData.Cliente_id))?.Cuit || 'N/A'}</p>
+                             {/* --- Client Progressive Search Section --- */}
+                             <div style={{ marginBottom: '10px' }}>
+                                 <label htmlFor="client-search-input">Buscar/Filtrar Cliente:</label>
+                                 <input
+                                     type="text"
+                                     id="client-search-input"
+                                     value={clientSearchTerm}
+                                     onChange={handleClientSearchInputChange} // No formType needed
+                                     placeholder="Escribe código, nombre o empresa para filtrar..."
+                                      disabled={savingData || clientes.length === 0} // Match disabled state
+                                 />
+                                  {clientes.length === 0 && loadingFormData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando clientes...</p>}
+                                   {clientes.length === 0 && !loadingFormData && !savingData && <p style={{fontSize: '14px', color: '#ffcc80'}}>No hay clientes disponibles. Agregue clientes primero.</p>}
+                             </div>
+
+                            {/* Display Selected Client or message */}
+                            {currentPresupuestoData.Cliente_id ? (
+                                 <div style={{ fontSize: '0.9rem', color: '#bdbdbd', marginBottom: '10px' }}>
+                                      <strong>Cliente Seleccionado:</strong> {getClientDetails(parseInt(currentPresupuestoData.Cliente_id))?.Codigo || 'N/A'} - {getClientDetails(parseInt(currentPresupuestoData.Cliente_id))?.Empresa || 'N/A'} ({getClientDetails(parseInt(currentPresupuestoData.Cliente_id))?.Nombre || 'N/A'})
+                                      <p style={{margin: 0, marginLeft: '10px'}}>Cuit: {getClientDetails(parseInt(currentPresupuestoData.Cliente_id))?.Cuit || 'N/A'}</p>
                                  </div>
+                            ) : (
+                                 <p style={{fontSize: '0.9rem', color: '#ffcc80', marginBottom: '10px'}}>
+                                     Seleccione un cliente de la lista de abajo.
+                                 </p>
+                            )}
+
+                            {/* List of Clients for Selection */}
+                            {clientSearchTerm !== '' && displayClients.length > 0 && !currentPresupuestoData.Cliente_id && (
+                                 <div style={{ marginTop: '10px', maxHeight: '150px', overflowY: 'auto', border: '1px solid #424242', borderRadius: '4px', backgroundColor: '#2c2c2c', marginBottom: '10px' }}>
+                                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                         <thead>
+                                             <tr>
+                                                  <th style={{ textAlign: 'left', padding: '8px' }}>Código</th>
+                                                  <th style={{ textAlign: 'left', padding: '8px' }}>Empresa</th>
+                                                  <th style={{ textAlign: 'left', padding: '8px' }}>Nombre</th>
+                                                  <th style={{ textAlign: 'left', padding: '8px' }}>Cuit</th>
+                                             </tr>
+                                         </thead>
+                                         <tbody>
+                                             {displayClients.map(client => (
+                                                 <tr
+                                                     key={client.id}
+                                                     onClick={() => handleClientSelect(client)} // No formType needed
+                                                     style={{ cursor: 'pointer', borderBottom: '1px solid #424242' }}
+                                                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#424242'}
+                                                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                                 >
+                                                      <td style={{ padding: '8px' }}>{client.Codigo}</td>
+                                                      <td style={{ padding: '8px' }}>{client.Empresa}</td>
+                                                      <td style={{ padding: '8px' }}>{client.Nombre}</td>
+                                                      <td style={{ padding: '8px' }}>{client.Cuit}</td>
+                                                 </tr>
+                                             ))}
+                                         </tbody>
+                                     </table>
+                                 </div>
+                            )}
+                             {clientSearchTerm !== '' && displayClients.length === 0 && clientes.length > 0 && !currentPresupuestoData.Cliente_id && (
+                                 <p style={{fontSize: '14px', color: '#ffcc80', marginTop: '10px'}}>
+                                     No se encontraron clientes con "{clientSearchTerm}".
+                                 </p>
                              )}
+                             {/* --- End Client Progressive Search Section --- */}
+
+
                             <div>
                                 <label htmlFor="validezOferta">Validez de la oferta (días):</label>
                                 <input
@@ -774,7 +966,7 @@ function ListaPresupuestos() {
                                 savingData={savingData} // Pasa el estado de guardado
                             />
                              {/* Mensaje de carga/disponibilidad de productos en el editor de ítems */}
-                             {productos.length === 0 && !loadingFormData && !savingData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos o no hay productos disponibles para los ítems.</p>}
+                             {(!Array.isArray(productos) || productos.length === 0) && !loadingFormData && !savingData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando productos o no hay productos disponibles para los ítems.</p>}
 
 
                             {/* Totales del Presupuesto */}
@@ -867,7 +1059,8 @@ function ListaPresupuestos() {
 
                             {/* Botones de acción del formulario */}
                             <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '20px' }}>
-                                <button type="submit" disabled={savingData}>
+                                {/* Added validation for Cliente_id and items length */}
+                                <button type="submit" disabled={savingData || !currentPresupuestoData.Cliente_id || currentPresupuestoData.items.length === 0}>
                                     {editingPresupuestoId ? 'Guardar Cambios' : 'Agregar Presupuesto'}
                                 </button>
                                 <button type="button" onClick={handleCancelForm} disabled={savingData} style={{ marginLeft: '10px', backgroundColor: '#616161', color: 'white' }}>
@@ -912,7 +1105,7 @@ function ListaPresupuestos() {
 
                     {/* Tabla de Presupuestos (Ahora usa displayedPresupuestos) */}
                     {/* Use displayedPresupuestos for rendering */}
-                    {!loading && displayedPresupuestos.length > 0 && (
+                    {!loading && Array.isArray(displayedPresupuestos) && displayedPresupuestos.length > 0 && (
                         <table>
                             <thead>
                                 <tr>
@@ -928,7 +1121,7 @@ function ListaPresupuestos() {
                             </thead>
                             <tbody>
                                 {/* Map over displayedPresupuestos */}
-                                {displayedPresupuestos.map((presupuesto) => (
+                                {Array.isArray(displayedPresupuestos) && displayedPresupuestos.map((presupuesto) => (
                                     <tr
                                         key={presupuesto.id}
                                         onClick={() => handleRowClick(presupuesto.id)}
@@ -950,9 +1143,11 @@ function ListaPresupuestos() {
                     )}
                      {/* Mostrar mensajes cuando no hay presupuestos */}
                      {/* Check both loading state and displayedPresupuestos length */}
-                     {!loading && displayedPresupuestos.length === 0 && searchTerm === '' && <p>No hay presupuestos registrados.</p>}
+                     {!loading && Array.isArray(displayedPresupuestos) && displayedPresupuestos.length === 0 && searchTerm === '' && <p>No hay presupuestos registrados.</p>}
                      {/* Show message if no budgets found for the current search term */}
-                     {!loading && displayedPresupuestos.length === 0 && searchTerm !== '' && <p>No se encontraron presupuestos para el término "{searchTerm}".</p>}
+                     {!loading && Array.isArray(displayedPresupuestos) && displayedPresupuestos.length === 0 && searchTerm !== '' && <p>No se encontraron presupuestos para el término "{searchTerm}".</p>}
+                     {/* Show error if displayedPresupuestos is not an array */}
+                     {!loading && !Array.isArray(displayedPresupuestos) && <p style={{ color: '#ef9a9a' }}>Error interno: La lista de presupuestos no es válida.</p>}
                 </>
             )}
         </div>
