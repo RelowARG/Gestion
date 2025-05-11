@@ -1,4 +1,4 @@
-// ListaVentas.js (Modified for Backend Auto-Generated Fact Nro, Date Formatting, and Edit Fix, and Clear Trigger)
+// ListaVentas.js (Modified for Backend Auto-Generated Fact Nro, Date Formatting, and Edit Fix, and Clear Trigger, and Progressive Client Search)
 import React, { useState, useEffect } from 'react';
 import VentaItemsEditor from './ventas/VentaItemsEditor'; // Import the modified component
 import ImportPresupuestoModal from './ventas/ImportPresupuestoModal'; // Import the new modal component
@@ -58,6 +58,10 @@ function ListaVentas() {
   // NUEVO estado para disparar la limpieza de errores en VentaItemsEditor
   const [clearItemsEditorErrorsTrigger, setClearItemsEditorErrorsTrigger] = useState(0);
 
+    // --- State for Client Progressive Search (NEW) ---
+    const [clientSearchTerm, setClientSearchTerm] = useState('');
+    const [displayClients, setDisplayClients] = useState([]);
+    // We will use Cliente_id in newVentaData/editedVentaData to track selected client
 
   // NUEVO: Función async para obtener las últimas ventas
   const fetchVentas = async () => { // Make the function async
@@ -104,6 +108,7 @@ function ListaVentas() {
           const data = await electronAPI.getClients(); // New API call (GET /clients)
           console.log('Clientes cargados para ventas:', data);
           setClientes(data); // Clients data rows use new Client DB column names
+           setDisplayClients(data); // Initialize display list for search (NEW)
       } catch (err) {
          console.error('Error fetching clients for ventas:', err); // Use message
          // Decide how to handle error
@@ -329,6 +334,7 @@ function ListaVentas() {
 
 
       // Removed Fact_Nro from validation
+       // *** UPDATED VALIDATION TO CHECK Cliente_id from state ***
       if (!newVentaData.Fecha || !newVentaData.Cliente_id || !newVentaData.Estado || !newVentaData.Pago || !Array.isArray(newVentaData.items) || newVentaData.items.length === 0 || newVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(newVentaData.Cotizacion_Dolar)) || parseFloat(newVentaData.Cotizacion_Dolar) <= 0) {
            // Updated validation message
            setError('Fecha, Cliente, Estado, Pago, Cotización Dólar (válida) y al menos un ítem son campos obligatorios.');
@@ -383,19 +389,19 @@ function ListaVentas() {
               // id is NOT included for new items
               // *** CORRECCIÓN: Incluir la propiedad 'type' aquí ***
               type: item.type, // <-- Asegúrate de enviar el tipo de ítem al backend
-              Descuento_Porcentaje: item.Descuento_Porcentaje !== null ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje
-              Total_Item: item.Total_Item !== null ? parseFloat(item.Total_Item) : null, // Ensure Total_Item is float or null
+              Descuento_Porcentaje: item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== '' && !isNaN(parseFloat(item.Descuento_Porcentaje)) ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje and handle empty/NaN
+              Total_Item: item.Total_Item !== null && item.Total_Item !== '' && !isNaN(parseFloat(item.Total_Item)) ? parseFloat(item.Total_Item) : null, // Ensure Total_Item is float or null and handle empty/NaN
               // Include fields based on item type (these are already conditional based on item.type)
               ...(item.type === 'product' && {
                   Producto_id: item.Producto_id,
-                  Cantidad: item.Cantidad !== null ? parseFloat(item.Cantidad) : null, // Ensure Quantity is float or null
-                  Precio_Unitario_Venta: item.Precio_Unitario_Venta !== null ? parseFloat(item.Precio_Unitario_Venta) : null, // Ensure Price is float or null
+                  Cantidad: item.Cantidad !== null && item.Cantidad !== '' && !isNaN(parseFloat(item.Cantidad)) ? parseFloat(item.Cantidad) : null, // Ensure Quantity is float or null and handle empty/NaN
+                  Precio_Unitario_Venta: item.Precio_Unitario_Venta !== null && item.Precio_Unitario_Venta !== '' && !isNaN(parseFloat(item.Precio_Unitario_Venta)) ? parseFloat(item.Precio_Unitario_Venta) : null, // Ensure Price is float or null and handle empty/NaN
                   // Backend does not need codigo/Descripcion for insertion
               }),
               ...(item.type === 'custom' && {
                    Descripcion_Personalizada: item.Descripcion_Personalizada,
-                   Cantidad_Personalizada: item.Cantidad_Personalizada !== null ? parseFloat(item.Cantidad_Personalizada) : null, // Ensure Quantity is float or null
-                   Precio_Unitario_Personalizada: item.Precio_Unitario_Personalizada !== null ? parseFloat(item.Precio_Unitario_Personalizada) : null, // Ensure Price is float or null
+                   Cantidad_Personalizada: item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== '' && !isNaN(parseFloat(item.Cantidad_Personalizada)) ? parseFloat(item.Cantidad_Personalizada) : null, // Ensure Quantity is float or null and handle empty/NaN
+                   Precio_Unitario_Personalizada: item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== '' && !isNaN(parseFloat(item.Precio_Unitario_Personalizada)) ? parseFloat(item.Precio_Unitario_Personalizada) : null, // Ensure Price is float or null and handle empty/NaN
                }),
           })),
       };
@@ -417,6 +423,11 @@ function ListaVentas() {
               Pago: '', Subtotal: '', IVA: '', Total: '',
               Cotizacion_Dolar: '', Total_ARS: '', items: [],
           });
+           // *** Clear client search states on successful add ***
+           setClientSearchTerm('');
+           setDisplayClients(clientes); // Reset display list to all clients
+           // *** END Clear client search states ***
+
           setShowAddForm(false); // Hide the add form after successful submission
           fetchVentas(); // Refresh the list of sales
 
@@ -445,6 +456,11 @@ function ListaVentas() {
        setEditingVentaId(selectedVentaId);
        setLoadingEditData(true);
        setError(null);
+       // *** Clear client search states when entering edit mode ***
+       setClientSearchTerm('');
+       setDisplayClients(clientes);
+       // *** END Clear client search states ***
+
 
        try {
            // Call the async API function to get venta data by ID
@@ -456,6 +472,14 @@ function ListaVentas() {
         const formattedFecha = ventaData.Fecha
         ? format(new Date(ventaData.Fecha), 'yyyy-MM-dd') // Formatear si existe la fecha
         : ''; // Si no hay fecha, usar cadena vacía
+
+           // Find the client object based on Cliente_id to display its name/code in search input
+           const clientForEdit = clientes.find(c => c.id === ventaData.Cliente_id);
+           if (clientForEdit) {
+               setClientSearchTerm(`${clientForEdit.Codigo || ''} - ${clientForEdit.Empresa || ''}`); // Use Empresa/Codigo from client data
+           }
+
+
           setEditedVentaData({
               id: ventaData.id, // Keep ID
               Fecha: formattedFecha || '', // Use formatted date
@@ -588,6 +612,7 @@ function ListaVentas() {
       setError(null);
 
       // VALIDACIÓN FRONTAL MEJORADA
+       // *** UPDATED VALIDATION TO CHECK Cliente_id from state ***
       if (!editedVentaData.Fecha || !editedVentaData.Cliente_id || !editedVentaData.Estado || !editedVentaData.Pago || editedVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(editedVentaData.Cotizacion_Dolar)) || parseFloat(editedVentaData.Cotizacion_Dolar) <= 0) {
            setError('Fecha, Cliente, Estado, Pago y Cotización Dólar (válida) son campos obligatorios.');
            setSavingData(false);
@@ -649,17 +674,17 @@ function ListaVentas() {
           items: editedVentaData.items.map(item => ({
               id: item.id || undefined, // Include ID if it exists (for existing items)
               type: item.type, // Send the type
-              Descuento_Porcentaje: item.Descuento_Porcentaje !== null ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje
-              Total_Item: item.Total_Item !== null ? parseFloat(item.Total_Item) : null,
+              Descuento_Porcentaje: item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== '' && !isNaN(parseFloat(item.Descuento_Porcentaje)) ? parseFloat(item.Descuento_Porcentaje) : null, // Include Descuento_Porcentaje and handle empty/NaN
+              Total_Item: item.Total_Item !== null && item.Total_Item !== '' && !isNaN(parseFloat(item.Total_Item)) ? parseFloat(item.Total_Item) : null, // Ensure Total_Item is float or null and handle empty/NaN
               ...(item.type === 'product' && {
                   Producto_id: item.Producto_id,
-                  Cantidad: item.Cantidad !== null ? parseFloat(item.Cantidad) : null,
-                  Precio_Unitario_Venta: item.Precio_Unitario_Venta !== null ? parseFloat(item.Precio_Unitario_Venta) : null,
+                  Cantidad: item.Cantidad !== null && item.Cantidad !== '' && !isNaN(parseFloat(item.Cantidad)) ? parseFloat(item.Cantidad) : null, // Ensure Quantity is float or null and handle empty/NaN
+                  Precio_Unitario_Venta: item.Precio_Unitario_Venta !== null && item.Precio_Unitario_Venta !== '' && !isNaN(parseFloat(item.Precio_Unitario_Venta)) ? parseFloat(item.Precio_Unitario_Venta) : null, // Ensure Price is float or null and handle empty/NaN
               }),
               ...(item.type === 'custom' && {
                    Descripcion_Personalizada: item.Descripcion_Personalizada,
-                   Cantidad_Personalizada: item.Cantidad_Personalizada !== null ? parseFloat(item.Cantidad_Personalizada) : null,
-                   Precio_Unitario_Personalizada: item.Precio_Unitario_Personalizada !== null ? parseFloat(item.Precio_Unitario_Personalizada) : null,
+                   Cantidad_Personalizada: item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== '' && !isNaN(parseFloat(item.Cantidad_Personalizada)) ? parseFloat(item.Cantidad_Personalizada) : null, // Ensure Quantity is float or null and handle empty/NaN
+                   Precio_Unitario_Personalizada: item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== '' && !isNaN(parseFloat(item.Precio_Unitario_Personalizada)) ? parseFloat(item.Precio_Unitario_Personalizada) : null, // Ensure Price is float or null and handle empty/NaN
                }),
           })),
           // **** FIN INCLUIR ITEMS ****
@@ -680,6 +705,11 @@ function ListaVentas() {
               Cotizacion_Dolar: '', Total_ARS: '', items: []
           });
           setSelectedVentaId(null);
+           // *** Clear client search states after successful edit ***
+           setClientSearchTerm('');
+           setDisplayClients(clientes); // Reset display list to all clients
+           // *** END Clear client search states ***
+
           fetchVentas(); // Refresh the list
           // NOTE: Stock is handled by backend during update
 
@@ -701,6 +731,10 @@ function ListaVentas() {
           Cotizacion_Dolar: '', Total_ARS: '', items: []
       });
       setError(null);
+       // *** Clear client search states on cancel edit ***
+       setDisplayClients(clientes); // Reset display list to all clients
+       setClientSearchTerm(''); // Also clear the search term
+       // *** END Clear client search states ***
   };
 
 
@@ -759,6 +793,10 @@ function ListaVentas() {
          fetchProductos();
         // NUEVO: Reset el trigger al abrir el formulario para que el editor empiece limpio
         setClearItemsEditorErrorsTrigger(0);
+         // *** Clear client search states when opening add form ***
+         setDisplayClients(clientes); // Reset display list to all clients
+         setClientSearchTerm(''); // Also clear the search term
+         // *** END Clear client search states ***
     };
 
     // Handle click on "Cancelar" button in the add form (Keep this)
@@ -767,7 +805,53 @@ function ListaVentas() {
         setError(null);
         // NUEVO: Reset el trigger al cancelar para limpiar el editor si se vuelve a abrir
         setClearItemsEditorErrorsTrigger(0);
+         // *** Clear client search states on cancel add ***
+         setDisplayClients(clientes); // Reset display list to all clients
+         setClientSearchTerm(''); // Also clear the search term
+         // *** END Clear client search states ***
     };
+
+    // --- Client Progressive Search Handlers (NEW) ---
+    const handleClientSearchInputChange = (e, formType) => { // Added formType parameter ('add' or 'edit')
+        const term = e.target.value.toLowerCase();
+        setClientSearchTerm(term);
+        setError(null); // Clear errors on search input
+
+        if (term === '') {
+            setDisplayClients(clientes);
+        } else {
+            const filtered = clientes.filter(client =>
+                (client.Codigo && String(client.Codigo).toLowerCase().includes(term)) || // Use Codigo
+                (client.Empresa && String(client.Empresa).toLowerCase().includes(term)) || // Use Empresa
+                (client.Nombre && String(client.Nombre).toLowerCase().includes(term)) // Use Nombre
+            );
+            setDisplayClients(filtered);
+        }
+
+        // Clear the selected client ID in the corresponding state based on form type
+        if (formType === 'add') {
+             setNewVentaData(prevState => ({ ...prevState, Cliente_id: '' }));
+        } else if (formType === 'edit') {
+             setEditedVentaData(prevState => ({ ...prevState, Cliente_id: '' }));
+        }
+    };
+
+    const handleClientSelect = (client, formType) => { // Added formType parameter
+        console.log('[ListaVentas] Client selected:', client);
+        setClientSearchTerm(`${client.Codigo || ''} - ${client.Empresa || ''}`); // Display Code - Company
+
+        // Update the selected client ID in the corresponding state based on form type
+        if (formType === 'add') {
+            setNewVentaData(prevState => ({ ...prevState, Cliente_id: client.id }));
+        } else if (formType === 'edit') {
+             setEditedVentaData(prevState => ({ ...prevState, Cliente_id: client.id }));
+        }
+
+        setDisplayClients([]); // Hide the list after selection
+        setError(null);
+    };
+    // --- End Client Progressive Search Handlers ---
+
 
     // --- Import Presupuesto Functionality --- (Keep this logic)
 
@@ -883,6 +967,17 @@ function ListaVentas() {
                  Total_ARS: prevState.Total_ARS,
              };
 
+             // *** Update client search term with imported client details ***
+             const importedClient = clientes.find(c => c.id === updatedState.Cliente_id);
+             if (importedClient) {
+                  setClientSearchTerm(`${importedClient.Codigo || ''} - ${importedClient.Empresa || ''}`);
+                  setDisplayClients([]); // Hide the list after import
+             } else {
+                 setClientSearchTerm(''); // Clear if client not found
+                  setDisplayClients(clientes); // Show all clients
+             }
+             // *** END Update client search term ***
+
 
              return updatedState; // Return the state with updated items and potentially updated IVA and Cotizacion_Dolar
         });
@@ -936,6 +1031,11 @@ function ListaVentas() {
         }
     };
 
+     // Helper to get client details by ID (NEW)
+     const getClientDetails = (clientId) => {
+        return clientes.find(c => c.id === clientId);
+     };
+
 
   return (
     <div className="container">
@@ -971,32 +1071,73 @@ function ListaVentas() {
                         <input type="date" id="new-fecha" name="Fecha" value={newVentaData.Fecha} onChange={handleNewVentaInputChange} required disabled={savingData || loadingEditData || deletingVentaId !== null} />
                     </div>
                     {/* Removed Fact Nro input field */}
-                     <div>
-                        <label htmlFor="new-cliente-id">Cliente:</label>
-                        <select
-                            id="new-cliente-id"
-                            name="Cliente_id"
-                            value={newVentaData.Cliente_id}
-                            onChange={handleNewVentaInputChange}
-                            required
-                             disabled={savingData || loadingEditData || deletingVentaId !== null || clientes.length === 0}
-                        >
-                            <option value="">Seleccione Cliente</option>
-                             {/* Populate from fetched clients, using new Client column names */}
-                            {clientes.map(cliente => (
-                                <option key={cliente.id} value={cliente.id}>{cliente.Empresa}</option>
-                            ))}
-                        </select>
-                         {clientes.length === 0 && loading && <p>Cargando clientes...</p>}
-                         {clientes.length === 0 && !loading && <p style={{fontSize: '14px', color: '#ffcc80'}}>No hay clientes disponibles. Agregue clientes primero.</p>} {/* Dark theme warning color */}
-                    </div>
-                     {/* Cuit (Derived) - Display only */}
-                    {newVentaData.Cliente_id && clientes.find(c => c.id === parseInt(newVentaData.Cliente_id)) && (
-                         <div>
-                            <label>Cuit:</label>
-                            <p>{clientes.find(c => c.id === parseInt(newVentaData.Cliente_id)).Cuit}</p> {/* Display Cuit using new column name */}
+
+                     {/* --- Client Progressive Search Section (ADD FORM) --- */}
+                     <div style={{ marginBottom: '10px' }}>
+                         <label htmlFor="new-client-search-input">Buscar/Filtrar Cliente:</label>
+                         <input
+                             type="text"
+                             id="new-client-search-input"
+                             value={clientSearchTerm}
+                             onChange={(e) => handleClientSearchInputChange(e, 'add')} // Pass 'add'
+                             placeholder="Escribe código, nombre o empresa para filtrar..."
+                              disabled={savingData || loadingEditData || deletingVentaId !== null || clientes.length === 0}
+                         />
+                          {clientes.length === 0 && loading && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando clientes...</p>}
+                          {clientes.length === 0 && !loading && <p style={{fontSize: '14px', color: '#ffcc80'}}>No hay clientes disponibles. Agregue clientes primero.</p>}
+                     </div>
+
+                    {/* Display Selected Client or message */}
+                    {newVentaData.Cliente_id ? (
+                         <div style={{ fontSize: '0.9rem', color: '#bdbdbd', marginBottom: '10px' }}>
+                              <strong>Cliente Seleccionado:</strong> {getClientDetails(parseInt(newVentaData.Cliente_id))?.Codigo || 'N/A'} - {getClientDetails(parseInt(newVentaData.Cliente_id))?.Empresa || 'N/A'} ({getClientDetails(parseInt(newVentaData.Cliente_id))?.Nombre || 'N/A'})
+                              <p style={{margin: 0, marginLeft: '10px'}}>Cuit: {getClientDetails(parseInt(newVentaData.Cliente_id))?.Cuit || 'N/A'}</p>
+                         </div>
+                    ) : (
+                         <p style={{fontSize: '0.9rem', color: '#ffcc80', marginBottom: '10px'}}>
+                             Seleccione un cliente de la lista de abajo.
+                         </p>
+                    )}
+
+                    {/* List of Clients for Selection (ADD FORM) */}
+                    {clientSearchTerm !== '' && displayClients.length > 0 && !newVentaData.Cliente_id && (
+                         <div style={{ marginTop: '10px', maxHeight: '150px', overflowY: 'auto', border: '1px solid #424242', borderRadius: '4px', backgroundColor: '#2c2c2c', marginBottom: '10px' }}>
+                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                 <thead>
+                                     <tr>
+                                         <th style={{ textAlign: 'left', padding: '8px' }}>Código</th> {/* Use Codigo */}
+                                         <th style={{ textAlign: 'left', padding: '8px' }}>Empresa</th> {/* Use Empresa */}
+                                         <th style={{ textAlign: 'left', padding: '8px' }}>Nombre</th> {/* Use Nombre */}
+                                         <th style={{ textAlign: 'left', padding: '8px' }}>Cuit</th> {/* Use Cuit */}
+                                     </tr>
+                                 </thead>
+                                 <tbody>
+                                     {displayClients.map(client => (
+                                         <tr
+                                             key={client.id}
+                                             onClick={() => handleClientSelect(client, 'add')} // Pass 'add'
+                                             style={{ cursor: 'pointer', borderBottom: '1px solid #424242' }}
+                                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#424242'}
+                                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                         >
+                                             <td style={{ padding: '8px' }}>{client.Codigo}</td> {/* Use Codigo */}
+                                             <td style={{ padding: '8px' }}>{client.Empresa}</td> {/* Use Empresa */}
+                                             <td style={{ padding: '8px' }}>{client.Nombre}</td> {/* Use Nombre */}
+                                             <td style={{ padding: '8px' }}>{client.Cuit}</td> {/* Use Cuit */}
+                                         </tr>
+                                     ))}
+                                 </tbody>
+                             </table>
                          </div>
                     )}
+                     {clientSearchTerm !== '' && displayClients.length === 0 && clientes.length > 0 && !newVentaData.Cliente_id && (
+                         <p style={{fontSize: '14px', color: '#ffcc80', marginTop: '10px'}}>
+                             No se encontraron clientes con "{clientSearchTerm}".
+                         </p>
+                     )}
+                      {/* --- End Client Progressive Search Section (ADD FORM) --- */}
+
+
                      <div>
                         <label htmlFor="new-estado">Estado:</label>
                         <select
@@ -1096,7 +1237,8 @@ function ListaVentas() {
 
                    {/* Button container for form actions */}
                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '20px' }}>
-                       <button type="submit" disabled={savingData || loadingEditData || deletingVentaId !== null || newVentaData.items.length === 0 || newVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(newVentaData.Cotizacion_Dolar)) || parseFloat(newVentaData.Cotizacion_Dolar) <= 0}>Agregar Venta</button>
+                        {/* *** Added validation to submit button for client_id *** */}
+                       <button type="submit" disabled={savingData || loadingEditData || deletingVentaId !== null || !newVentaData.Cliente_id || newVentaData.items.length === 0 || newVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(newVentaData.Cotizacion_Dolar)) || parseFloat(newVentaData.Cotizacion_Dolar) <= 0}>Agregar Venta</button>
                        {/* Cancel button for the add form */}
                        <button type="button" onClick={handleCancelAdd} disabled={savingData || loadingEditData || deletingVentaId !== null} style={{ marginLeft: '10px', backgroundColor: '#616161', color: 'white', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)' }}>
                            Cancelar
@@ -1172,7 +1314,7 @@ function ListaVentas() {
                           </td>
 
                           <td style={{ backgroundColor: getPagoColor(venta.Pago), color: '#212121', fontWeight: 'bold' }}>
-                              {getPagoDisplayText(venta.Pago)}
+                              {getPagoDisplayText(venta.Pago)} {/* Corrected typo here */}
                            </td>
 
                           {/* Safely access and format numerical values */}
@@ -1198,28 +1340,72 @@ function ListaVentas() {
                                                 <label htmlFor={`edit-fact-nro-${venta.id}`}>Fact Nro:</label>
                                                 <input type="text" id={`edit-fact-nro-${venta.id}`} name="Fact_Nro" value={editedVentaData.Fact_Nro || ''} readOnly disabled={true} style={{ backgroundColor: '#3a3a3a', color: '#e0e0e0', borderBottomColor: '#424242' }} />
                                             </div>
-                                             <div>
-                                                <label htmlFor={`edit-cliente-${venta.id}`}>Cliente:</label>
-                                                <select
-                                                    id={`edit-cliente-${venta.id}`}
-                                                    name="Cliente_id"
-                                                    value={editedVentaData.Cliente_id || ''}
-                                                    onChange={handleEditFormChange}
-                                                    required
-                                                     disabled={savingData || clientes.length === 0}
-                                                >
-                                                    <option value="">Seleccione Cliente</option>
-                                                    {clientes.map(cliente => (
-                                                        <option key={cliente.id} value={cliente.id}>{cliente.Empresa}</option>
-                                                    ))}
-                                                </select>
-                                                {clientes.length === 0 && loadingEditData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando clientes...</p>}
-                                                {editedVentaData.Cliente_id && clientes.find(c => c.id === parseInt(editedVentaData.Cliente_id)) && (
-                                                     <div style={{marginTop: '5px', fontSize: '14px', color: '#bdbdbd'}}>
-                                                        Cuit: {clientes.find(c => c.id === parseInt(editedVentaData.Cliente_id)).Cuit}
-                                                     </div>
-                                                )}
-                                            </div>
+                                             {/* --- Client Progressive Search Section (EDIT FORM) --- */}
+                                             <div style={{ marginBottom: '10px' }}>
+                                                 <label htmlFor={`edit-client-search-input-${venta.id}`}>Buscar/Filtrar Cliente:</label>
+                                                 <input
+                                                     type="text"
+                                                     id={`edit-client-search-input-${venta.id}`}
+                                                     value={clientSearchTerm} // Use the same search term state
+                                                     onChange={(e) => handleClientSearchInputChange(e, 'edit')} // Pass 'edit'
+                                                     placeholder="Escribe código, nombre o empresa para filtrar..."
+                                                      disabled={savingData || clientes.length === 0}
+                                                 />
+                                                  {clientes.length === 0 && loadingEditData && <p style={{fontSize: '14px', color: '#ffcc80'}}>Cargando clientes...</p>}
+                                             </div>
+
+                                            {/* Display Selected Client or message */}
+                                            {editedVentaData.Cliente_id ? (
+                                                 <div style={{ fontSize: '0.9rem', color: '#bdbdbyd', marginBottom: '10px' }}>
+                                                     {/* Fetch and display client details using Cliente_id from editedVentaData */}
+                                                      <strong>Cliente Seleccionado:</strong> {getClientDetails(parseInt(editedVentaData.Cliente_id))?.Codigo || 'N/A'} - {getClientDetails(parseInt(editedVentaData.Cliente_id))?.Empresa || 'N/A'} ({getClientDetails(parseInt(editedVentaData.Cliente_id))?.Nombre || 'N/A'})
+                                                      <p style={{margin: 0, marginLeft: '10px'}}>Cuit: {getClientDetails(parseInt(editedVentaData.Cliente_id))?.Cuit || 'N/A'}</p>
+                                                 </div>
+                                            ) : (
+                                                 <p style={{fontSize: '0.9rem', color: '#ffcc80', marginBottom: '10px'}}>
+                                                     Seleccione un cliente de la lista de abajo.
+                                                 </p>
+                                            )}
+
+                                            {/* List of Clients for Selection (EDIT FORM) */}
+                                            {clientSearchTerm !== '' && displayClients.length > 0 && !editedVentaData.Cliente_id && (
+                                                 <div style={{ marginTop: '10px', maxHeight: '150px', overflowY: 'auto', border: '1px solid #424242', borderRadius: '4px', backgroundColor: '#2c2c2c', marginBottom: '10px' }}>
+                                                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                         <thead>
+                                                             <tr>
+                                                                  <th style={{ textAlign: 'left', padding: '8px' }}>Código</th> {/* Use Codigo */}
+                                                                  <th style={{ textAlign: 'left', padding: '8px' }}>Empresa</th> {/* Use Empresa */}
+                                                                  <th style={{ textAlign: 'left', padding: '8px' }}>Nombre</th> {/* Use Nombre */}
+                                                                  <th style={{ textAlign: 'left', padding: '8px' }}>Cuit</th> {/* Use Cuit */}
+                                                             </tr>
+                                                         </thead>
+                                                         <tbody>
+                                                             {displayClients.map(client => (
+                                                                 <tr
+                                                                     key={client.id}
+                                                                     onClick={() => handleClientSelect(client, 'edit')} // Pass 'edit'
+                                                                     style={{ cursor: 'pointer', borderBottom: '1px solid #424242' }}
+                                                                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#424242'}
+                                                                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                                                 >
+                                                                      <td style={{ padding: '8px' }}>{client.Codigo}</td> {/* Use Codigo */}
+                                                                      <td style={{ padding: '8px' }}>{client.Empresa}</td> {/* Use Empresa */}
+                                                                      <td style={{ padding: '8px' }}>{client.Nombre}</td> {/* Use Nombre */}
+                                                                      <td style={{ padding: '8px' }}>{client.Cuit}</td> {/* Use Cuit */}
+                                                                 </tr>
+                                                             ))}
+                                                         </tbody>
+                                                     </table>
+                                                 </div>
+                                            )}
+                                             {clientSearchTerm !== '' && displayClients.length === 0 && clientes.length > 0 && !editedVentaData.Cliente_id && (
+                                                 <p style={{fontSize: '14px', color: '#ffcc80', marginTop: '10px'}}>
+                                                     No se encontraron clientes con "{clientSearchTerm}".
+                                                 </p>
+                                             )}
+                                             {/* --- End Client Progressive Search Section (EDIT FORM) --- */}
+
+
                                              <div>
                                                 <label htmlFor={`edit-estado-${venta.id}`}>Estado:</label>
                                                  <select
@@ -1316,6 +1502,7 @@ function ListaVentas() {
 
                                             <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}>
                                                  {/* Botón Guardar Cambios */}
+                                                 {/* *** Added validation to submit button for client_id *** */}
                                                  <button type="submit" disabled={savingData || !editedVentaData.Cliente_id || editedVentaData.Cotizacion_Dolar === '' || isNaN(parseFloat(editedVentaData.Cotizacion_Dolar)) || parseFloat(editedVentaData.Cotizacion_Dolar) <= 0 || editedVentaData.items.length === 0}> {/* Added validation to submit button */}
                                                      Guardar Cambios
                                                 </button>
