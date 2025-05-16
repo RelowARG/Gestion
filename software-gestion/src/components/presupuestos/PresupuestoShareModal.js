@@ -51,13 +51,16 @@ function PresupuestoShareModal({ presupuestoData, onClose, loading, error }) {
                  };
 
                  presupuestoData.items.forEach(item => {
-                      const descripcion = item.Producto_id !== null
+                      // Check Producto_id to determine item type for text content generation
+                      const isProductItem = item.Producto_id !== null && item.Producto_id !== undefined;
+
+                      const descripcion = isProductItem
                           ? `${item.codigo || ''} - ${item.Producto_Descripcion || item.Descripcion || ''}` // Use Producto_Descripcion if available, fallback to Descripcion
                           : item.Descripcion_Personalizada || '';
-                      const cantidad = item.Producto_id !== null ? item.Cantidad : item.Cantidad_Personalizada;
-                      const etiRollo = item.Producto_id !== null ? item.eti_x_rollo || 'N/A' : 'N/A'; // Get eti_x_rollo for products
-                      const precioUnitario = item.Producto_id !== null ? item.Precio_Unitario : item.Precio_Unitario_Personalizado;
-                      const descuento = item.Descuento_Porcentaje || 0;
+                      const cantidad = isProductItem ? item.Cantidad : item.Cantidad_Personalizada;
+                      const etiRollo = isProductItem ? item.eti_x_rollo || 'N/A' : 'N/A'; // Get eti_x_rollo for products
+                      const precioUnitario = isProductItem ? item.Precio_Unitario : item.Precio_Unitario_Personalizado;
+                      const descuento = item.Descuento_Porcentaje || 0; // Discount applies to product items, default to 0 for custom in text
                       const totalItem = item.Total_Item || 0;
 
 
@@ -85,13 +88,16 @@ function PresupuestoShareModal({ presupuestoData, onClose, loading, error }) {
 
                  // Table Rows - ADJUSTED FOR NEW COLUMNS
                  presupuestoData.items.forEach(item => {
-                     const descripcion = item.Producto_id !== null
+                     // Check Producto_id to determine item type for text content generation
+                     const isProductItem = item.Producto_id !== null && item.Producto_id !== undefined;
+
+                     const descripcion = isProductItem
                          ? `${item.codigo || ''} - ${item.Producto_Descripcion || item.Descripcion || ''}`
                          : item.Descripcion_Personalizada || '';
-                     const cantidad = item.Producto_id !== null ? item.Cantidad : item.Cantidad_Personalizada;
-                     const etiRollo = item.Producto_id !== null ? item.eti_x_rollo || 'N/A' : 'N/A'; // Get eti_x_rollo for products
-                     const precioUnitario = item.Producto_id !== null ? item.Precio_Unitario : item.Precio_Unitario_Personalizado;
-                     const descuento = item.Descuento_Porcentaje || 0;
+                     const cantidad = isProductItem ? item.Cantidad : item.Cantidad_Personalizada;
+                     const etiRollo = isProductItem ? item.eti_x_rollo || 'N/A' : 'N/A'; // Get eti_x_rollo for products
+                     const precioUnitario = isProductItem ? item.Precio_Unitario : item.Precio_Unitario_Personalizado;
+                     const descuento = item.Descuento_Porcentaje || 0; // Discount applies to product items, default to 0 for custom in text
                      const totalItem = item.Total_Item || 0;
 
                      textContent += `| ${String(descripcion).padEnd(colWidths.descripcion)} | ${String(cantidad).padEnd(colWidths.cantidad)} | ${String(etiRollo).padEnd(colWidths.etiRollo)} | ${String(precioUnitario).padEnd(colWidths.precio)} | ${String(descuento).padEnd(colWidths.descuento)} | ${String(totalItem).padEnd(colWidths.total)} |\n`;
@@ -338,7 +344,7 @@ function PresupuestoShareModal({ presupuestoData, onClose, loading, error }) {
                     margin-top: 10px !important;
                     margin-bottom: 15px !important;
                     border: 1px solid #eeeeee !important; /* Borde general de tabla muy claro */
-                    font-size: 10pt !important; /* Tamaño de fuente de tabla */
+                    font-size: 10pt !important;
                     background-color: #ffffff !important; /* Fondo blanco */
                     box-shadow: none !important;
                     table-layout: auto !important;
@@ -521,28 +527,37 @@ function PresupuestoShareModal({ presupuestoData, onClose, loading, error }) {
                         // Usar index como key temporal si no hay ID de ítem
                         <tr key={item.id || index}>
                             <td>
-                                {/* Display Description based on item type */}
-                                {item.Producto_id !== null
+                                {/* Display Description based on item type (check Producto_id directly) */}
+                                {item.Producto_id !== null && item.Producto_id !== undefined
                                     ? `${item.codigo || ''} - ${item.Producto_Descripcion || item.Descripcion || ''}` // Use Producto_Descripcion if available, fallback to Descripcion
                                     : item.Descripcion_Personalizada || ''
                                 }
                             </td>
                             <td>
-                                {/* Display Quantity based on item type */}
-                                {item.Producto_id !== null ? item.Cantidad : item.Cantidad_Personalizada}
-                            </td>
-                            <td>
-                                {/* Display Eti x rollo only for product items */}
-                                {item.Producto_id !== null ? item.eti_x_rollo || 'N/A' : 'N/A'}
-                            </td>
-                            <td>
-                                {/* Display Unit Price based on item type, format to 2 decimals */}
-                                {item.Producto_id !== null
-                                    ? (item.Precio_Unitario !== null && item.Precio_Unitario !== undefined && !isNaN(parseFloat(item.Precio_Unitario)) ? parseFloat(item.Precio_Unitario).toFixed(2) : 'N/A')
-                                    : (item.Precio_Unitario_Personalizado !== null && item.Precio_Unitario_Personalizado !== undefined && !isNaN(parseFloat(item.Precio_Unitario_Personalizado)) ? parseFloat(item.Precio_Unitario_Personalizado).toFixed(2) : 'N/A')
+                                {/* Display Quantity based on item type (check Producto_id directly) */}
+                                {item.Producto_id !== null && item.Producto_id !== undefined
+                                    ? (item.Cantidad !== null && item.Cantidad !== undefined ? item.Cantidad : 'N/A')
+                                    : (item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== undefined ? item.Cantidad_Personalizada : 'N/A')
                                 }
                             </td>
-                            <td>{item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== undefined ? parseFloat(item.Descuento_Porcentaje) : 0}</td> {/* Ensure it's a number or 0 */}
+                            <td>
+                                {/* Display Eti x rollo only for product items (check Producto_id directly) */}
+                                {item.Producto_id !== null && item.Producto_id !== undefined ? item.eti_x_rollo || 'N/A' : 'N/A'}
+                            </td>
+                            <td>
+                                {/* Display Unit Price based on item type, format to 2 decimals (check Producto_id directly) */}
+                                {item.Producto_id !== null && item.Producto_id !== undefined
+                                    ? (item.Precio_Unitario !== null && item.Precio_Unitario !== undefined && !isNaN(parseFloat(item.Precio_Unitario)) ? parseFloat(item.Precio_Unitario).toFixed(2) : 'N/A')
+                                    : (item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== undefined && !isNaN(parseFloat(item.Precio_Unitario_Personalizada)) ? parseFloat(item.Precio_Unitario_Personalizada).toFixed(2) : 'N/A')
+                                }
+                            </td>
+                            <td>
+                                {/* Display Discount (%) only for products (check Producto_id directly) */}
+                                {item.Producto_id !== null && item.Producto_id !== undefined
+                                    ? (item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== undefined ? parseFloat(item.Descuento_Porcentaje).toFixed(2) : '0.00')
+                                    : 'N/A'
+                                }
+                            </td>
                             <td>
                                 {/* Display Total Item, format to 2 decimals */}
                                 {item.Total_Item !== null && item.Total_Item !== undefined && !isNaN(parseFloat(item.Total_Item)) ? parseFloat(item.Total_Item).toFixed(2) : 'N/A'}

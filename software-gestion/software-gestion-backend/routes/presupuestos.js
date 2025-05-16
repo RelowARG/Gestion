@@ -201,7 +201,7 @@ router.get('/', async (req, res) => {
           Otro_Monto, Total_USD, Cotizacion_Dolar, Total_ARS
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-      // Asegurarse de que los valores numéricos sean números o null si vienen vacíos/invalidos
+      // Asegurarse de que los valores numéricos sean números o null, no strings vacíos, al enviar
       const presupuestoValues = [
         formattedNextNumero, // Usar el número generado
         formattedFecha, // Usar la fecha formateada
@@ -221,7 +221,7 @@ router.get('/', async (req, res) => {
 
       const [result] = await req.db.execute(insertPresupuestoSql, presupuestoValues);
       const nuevoPresupuestoId = result.insertId; // Obtener el ID generado para el presupuesto principal
-      console.log(`Presupuesto principal insertado con ID: ${nuevoPresupuestoId}`);
+      console.log(`[BACKEND] Presupuesto principal insertado con ID: ${nuevoPresupuestoId}`);
 
 
       // 3. Insertar los ítems del presupuesto - CORRECCIÓN: Insertar uno por uno
@@ -233,6 +233,7 @@ router.get('/', async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       if (items.length > 0) {
+        console.log(`[BACKEND] Processing ${items.length} items for insertion.`);
         for (const item of items) {
             // Validar cada ítem antes de intentar insertarlo
             // Asegurarse de que los campos numéricos sean números o null si vienen vacíos/invalidos
@@ -243,33 +244,45 @@ router.get('/', async (req, res) => {
             const totalItem = item.Total_Item !== null && item.Total_Item !== '' ? parseFloat(item.Total_Item) : null;
 
             const cantidadPersonalizada = item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== '' ? parseFloat(item.Cantidad_Personalizada) : null;
-            const precioUnitarioPersonalizado = item.Precio_Unitario_Personalizado !== null && item.Precio_Unitario_Personalizado !== '' ? parseFloat(item.Precio_Unitario_Personalizado) : null;
+            const precioUnitarioPersonalizado = item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== '' ? parseFloat(item.Precio_Unitario_Personalizada) : null;
 
-
-            // Validación más estricta para asegurar que al menos un tipo de ítem tiene datos válidos
-            if (productoId !== null) { // Es un ítem de producto
-                if (cantidad === null || isNaN(cantidad) || cantidad <= 0 || precioUnitario === null || isNaN(precioUnitario) || precioUnitario < 0) {
-                    console.error('Skipping product item due to invalid or missing data:', item);
-                    // Decide how to handle invalid items: skip, or rollback transaction?
-                    // For now, just log and skip, but a rollback might be safer depending on requirements.
-                    continue; // Skip insertion for this item
-                }
-            } else { // Es un ítem personalizado
-                 if (!item.Descripcion_Personalizada || cantidadPersonalizada === null || isNaN(cantidadPersonalizada) || cantidadPersonalizada <= 0 || precioUnitarioPersonalizado === null || isNaN(precioUnitarioPersonalizado) || precioUnitarioPersonalizado < 0) {
-                    console.error('Skipping custom item due to invalid or missing data:', item);
-                    continue; // Skip insertion for this item
+             // --- Detailed Validation Logging ---
+             let skip = false;
+             if (productoId !== null) { // Es un ítem de producto
+                 if (cantidad === null || isNaN(cantidad) || cantidad <= 0) {
+                      console.error(`[BACKEND] Skipping product item validation failed (Cantidad invalid: ${cantidad}):`, item);
+                      skip = true;
+                 } else if (precioUnitario === null || isNaN(precioUnitario) || precioUnitario < 0) {
+                      console.error(`[BACKEND] Skipping product item validation failed (PrecioUnitario invalid: ${precioUnitario}):`, item);
+                      skip = true;
                  }
-            }
-             // Validar descuento si está presente
-             if (descuentoPorcentaje !== null && isNaN(descuentoPorcentaje) || descuentoPorcentaje < 0 || descuentoPorcentaje > 100) {
-                  console.error('Skipping item due to invalid discount percentage:', item);
-                  continue; // Skip this item
+             } else { // Es un ítem personalizado
+                 if (!item.Descripcion_Personalizada) {
+                      console.error(`[BACKEND] Skipping custom item validation failed (Descripcion_Personalizada missing):`, item);
+                      skip = true;
+                 } else if (cantidadPersonalizada === null || isNaN(cantidadPersonalizada) || cantidadPersonalizada <= 0) {
+                     console.error(`[BACKEND] Skipping custom item validation failed (Cantidad_Personalizada invalid: ${cantidadPersonalizada}):`, item);
+                      skip = true;
+                 } else if (precioUnitarioPersonalizado === null || isNaN(precioUnitarioPersonalizado) || precioUnitarioPersonalizado < 0) {
+                      console.error(`[BACKEND] Skipping custom item validation failed (Precio_Unitario_Personalizada invalid: ${precioUnitarioPersonalizado}):`, item);
+                      skip = true;
+                 }
              }
-             // Validar total si está presente
-             if (totalItem !== null && isNaN(totalItem) || totalItem < 0) {
-                  console.error('Skipping item due to invalid total item value:', item);
-                  continue; // Skip this item
+              // Validar descuento si está presente (applies mainly to products, but checked for all)
+              if (!skip && descuentoPorcentaje !== null && isNaN(descuentoPorcentaje) || descuentoPorcentaje < 0 || descuentoPorcentaje > 100) {
+                   console.error(`[BACKEND] Skipping item validation failed (DescuentoPorcentaje invalid: ${descuentoPorcentaje}):`, item);
+                   skip = true;
+              }
+              // Validar total si está presente
+              if (!skip && totalItem !== null && isNaN(totalItem) || totalItem < 0) {
+                   console.error(`[BACKEND] Skipping item validation failed (Total_Item invalid: ${totalItem}):`, item);
+                   skip = true;
+              }
+
+             if (skip) {
+                 continue; // Skip insertion for this item if validation failed
              }
+             // --- End Detailed Validation Logging ---
 
 
             const itemValues = [
@@ -285,22 +298,28 @@ router.get('/', async (req, res) => {
             ];
 
             await req.db.execute(insertItemSql, itemValues); // Ejecutar inserción para cada ítem
-            console.log(`Ítem insertado para Presupuesto ID ${nuevoPresupuestoId}.`);
+            console.log(`[BACKEND] Ítem insertado para Presupuesto ID ${nuevoPresupuestoId}.`);
         }
+      } else {
+          console.log(`[BACKEND] No items to process for insertion.`);
       }
 
-      // Si todo fue exitoso, confirmar la transacción
-      // await req.db.execute('UNLOCK TABLES'); // Descomentar si usaste bloqueo explícito
+
+      // If everything was successful, commit the transaction
+      // await req.db.execute('LOCK TABLES Presupuestos WRITE'); // Descomentar si necesitas bloqueo explícito
       await req.db.commit();
+      console.log(`[BACKEND] Transaction committed for adding budget ID ${nuevoPresupuestoId}.`);
+
 
       // Enviar respuesta de éxito con el ID del nuevo presupuesto
       res.status(201).json({ success: { id: nuevoPresupuestoId, Numero: formattedNextNumero } }); // Devolver el número generado también
 
     } catch (error) {
-      console.error('Error al agregar presupuesto:', error);
+      console.error('[BACKEND] Error al agregar presupuesto:', error);
       // En caso de error, hacer rollback de la transacción
       // await req.db.execute('UNLOCK TABLES'); // Descomentar si usaste bloqueo explícito
       await req.db.rollback();
+      console.error('[BACKEND] Transaction rolled back.');
       let userMessage = 'Error interno del servidor al agregar presupuesto.';
       // Manejar errores específicos si es necesario (ej: FK para Cliente_id o Producto_id)
        if (error.code === 'ER_NO_REFERENCED_ROW_2') {
@@ -394,14 +413,14 @@ router.get('/', async (req, res) => {
             await req.db.rollback();
             return res.status(404).json({ error: `No se encontró presupuesto con ID ${presupuestoId} para actualizar.` });
        }
-       console.log(`Presupuesto principal con ID ${presupuestoId} actualizado. Changes: ${updateResult.affectedRows}`);
+       console.log(`[BACKEND] Presupuesto principal con ID ${presupuestoId} actualizado. Changes: ${updateResult.affectedRows}`);
 
 
       // 2. Eliminar los ítems existentes para este presupuesto
       // Esta es la forma simple que replicaremos desde tu manejador IPC.
       const deleteItemsSql = `DELETE FROM Presupuesto_Items WHERE Presupuesto_id = ?`;
       await req.db.execute(deleteItemsSql, [presupuestoId]); // No necesitamos el resultado, solo que se ejecute
-      console.log(`Ítems existentes eliminados para Presupuesto ID ${presupuestoId}.`);
+      console.log(`[BACKEND] Ítems existentes eliminados para Presupuesto ID ${presupuestoId}.`);
 
 
       // 3. Insertar los nuevos ítems - CORRECCIÓN: Insertar uno por uno
@@ -413,6 +432,7 @@ router.get('/', async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       if (items.length > 0) {
+           console.log(`[BACKEND] Processing ${items.length} items for update insertion.`);
         for (const item of items) {
              // Validar cada ítem antes de intentar insertarlo
              // Asegurarse de que los campos numéricos sean números o null si vienen vacíos/invalidos
@@ -423,64 +443,85 @@ router.get('/', async (req, res) => {
              const totalItem = item.Total_Item !== null && item.Total_Item !== '' ? parseFloat(item.Total_Item) : null;
 
              const cantidadPersonalizada = item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== '' ? parseFloat(item.Cantidad_Personalizada) : null;
-             const precioUnitarioPersonalizado = item.Precio_Unitario_Personalizado !== null && item.Precio_Unitario_Personalizado !== '' ? parseFloat(item.Precio_Unitario_Personalizado) : null;
+             const precioUnitarioPersonalizado = item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== '' ? parseFloat(item.Precio_Unitario_Personalizada) : null;
 
-
-             // Validación más estricta para asegurar que al menos un tipo de ítem tiene datos válidos
+              // --- Detailed Validation Logging ---
+             let skip = false;
              if (productoId !== null) { // Es un ítem de producto
-                 if (cantidad === null || isNaN(cantidad) || cantidad <= 0 || precioUnitario === null || isNaN(precioUnitario) || precioUnitario < 0) {
-                     console.error('Skipping product item due to invalid or missing data during update:', item);
-                     continue; // Skip insertion for this item
+                 if (cantidad === null || isNaN(cantidad) || cantidad <= 0) {
+                      console.error(`[BACKEND] Skipping product item validation failed during update (Cantidad invalid: ${cantidad}):`, item);
+                      skip = true;
+                 } else if (precioUnitario === null || isNaN(precioUnitario) || precioUnitario < 0) {
+                      console.error(`[BACKEND] Skipping product item validation failed during update (PrecioUnitario invalid: ${precioUnitario}):`, item);
+                      skip = true;
                  }
              } else { // Es un ítem personalizado
-                  if (!item.Descripcion_Personalizada || cantidadPersonalizada === null || isNaN(cantidadPersonalizada) || cantidadPersonalizada <= 0 || precioUnitarioPersonalizado === null || isNaN(precioUnitarioPersonalizado) || precioUnitarioPersonalizado < 0) {
-                     console.error('Skipping custom item due to invalid or missing data during update:', item);
-                     continue; // Skip insertion for this item
-                  }
+                 if (!item.Descripcion_Personalizada) {
+                      console.error(`[BACKEND] Skipping custom item validation failed during update (Descripcion_Personalizada missing):`, item);
+                      skip = true;
+                 } else if (cantidadPersonalizada === null || isNaN(cantidadPersonalizada) || cantidadPersonalizada <= 0) {
+                     console.error(`[BACKEND] Skipping custom item validation failed during update (Cantidad_Personalizada invalid: ${cantidadPersonalizada}):`, item);
+                      skip = true;
+                 } else if (precioUnitarioPersonalizado === null || isNaN(precioUnitarioPersonalizado) || precioUnitarioPersonalizado < 0) {
+                      console.error(`[BACKEND] Skipping custom item validation failed during update (Precio_Unitario_Personalizada invalid: ${precioUnitarioPersonalizado}):`, item);
+                      skip = true;
+                 }
              }
-              // Validar descuento si está presente
-              if (descuentoPorcentaje !== null && isNaN(descuentoPorcentaje) || descuentoPorcentaje < 0 || descuentoPorcentaje > 100) {
-                   console.error('Skipping item due to invalid discount percentage during update:', item);
-                   continue; // Skip this item
+              // Validar descuento si está presente (applies mainly to products, but checked for all)
+              if (!skip && descuentoPorcentaje !== null && isNaN(descuentoPorcentaje) || descuentoPorcentaje < 0 || descuentoPorcentaje > 100) {
+                   console.error(`[BACKEND] Skipping item validation failed during update (DescuentoPorcentaje invalid: ${descuentoPorcentaje}):`, item);
+                   skip = true;
               }
               // Validar total si está presente
-              if (totalItem !== null && isNaN(totalItem) || totalItem < 0) {
-                   console.error('Skipping item due to invalid total item value during update:', item);
-                   continue; // Skip this item
+              if (!skip && totalItem !== null && isNaN(totalItem) || totalItem < 0) {
+                   console.error(`[BACKEND] Skipping item validation failed during update (Total_Item invalid: ${totalItem}):`, item);
+                   skip = true;
               }
+
+             if (skip) {
+                 continue; // Skip insertion for this item if validation failed
+             }
+             // --- End Detailed Validation Logging ---
 
 
              const itemValues = [
                  presupuestoId, // Enlazar con el ID del presupuesto principal
                  productoId, // Producto_id (null para personalizados)
-                 cantidad, // Cantidad (null para personalizados)
-                 precioUnitario, // Precio Unitario (null para personalizados)
-                 descuentoPorcentaje, // Descuento
-                 totalItem, // Total Ítem
-                 item.Descripcion_Personalizada || null, // Descripción Personalizada (null para productos)
-                 precioUnitarioPersonalizado, // Precio Unitario Personalizado (null para productos)
-                 cantidadPersonalizada, // Cantidad Personalizada (null para productos)
+                 cantidad, // Cantidad (null for personalized)
+                 precioUnitario, // Unit Price (null for personalized)
+                 descuentoPorcentaje, // Discount
+                 totalItem, // Total Item
+                 item.Descripcion_Personalizada || null, // Personalized Description (null for products)
+                 precioUnitarioPersonalizado, // Personalized Unit Price (null for products)
+                 cantidadPersonalizada, // Personalized Quantity (null for products)
              ];
 
              await req.db.execute(insertItemSql, itemValues); // Ejecutar inserción para cada ítem
-             console.log(`Ítem insertado para Presupuesto ID ${presupuestoId} durante actualización.`);
+             console.log(`[BACKEND] Ítem insertado para Presupuesto ID ${presupuestoId} durante actualización.`);
          }
+      } else {
+           console.log(`[BACKEND] No items to process for update insertion.`);
       }
 
 
-      // Si todo fue exitoso, confirmar la transacción
+      // If everything was successful, commit the transaction
       await req.db.commit();
+      console.log(`[BACKEND] Transaction committed for updating budget ID ${presupuestoId}.`);
+
 
       // Enviar respuesta de éxito
       res.json({ success: { id: presupuestoId, changes: updateResult.affectedRows } });
 
     } catch (error) {
-      console.error(`Error al actualizar presupuesto con ID ${presupuestoId}:`, error);
+      console.error(`[BACKEND] Error al actualizar presupuesto con ID ${presupuestoId}:`, error);
       // En caso de error, hacer rollback
       await req.db.rollback();
+      console.error('[BACKEND] Transaction rolled back.');
       let userMessage = 'Error interno del servidor al actualizar presupuesto.';
-       // Manejar errores específicos (ej: FK para Cliente_id o Producto_id, o Número duplicado si se permite cambiar el número)
-       if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+       // Manejar error si hay registros asociados que impidan la eliminación principal (si no se eliminaron por CASCADE o explícitamente)
+       if (error.code === 'ER_ROW_IS_REFERENCED_2') {
+            userMessage = 'No se puede eliminar el presupuesto porque tiene registros asociados inesperados.'; // Deberían haberse eliminado ítems, pero como precaución
+       } else if (error.code === 'ER_NO_REFERENCED_ROW_2') {
             userMessage = 'Error: Cliente o Producto seleccionado en los ítems no válido.';
        } else if (error.code === 'ER_DUP_ENTRY' && error.message.includes('Numero')) {
             userMessage = 'Error: El número de presupuesto ya existe.';
@@ -490,6 +531,7 @@ router.get('/', async (req, res) => {
       res.status(500).json({ error: userMessage });
     }
   });
+
 
   // Eliminar un presupuesto por ID, incluyendo sus ítems
   router.delete('/:id', async (req, res) => {
@@ -506,7 +548,7 @@ router.get('/', async (req, res) => {
       // Sin embargo, es buena práctica (y replica tu manejador IPC) eliminarlos explícitamente dentro de la transacción.
       const deleteItemsSql = `DELETE FROM Presupuesto_Items WHERE Presupuesto_id = ?`;
       await req.db.execute(deleteItemsSql, [presupuestoId]); // No necesitamos el resultado
-      console.log(`Ítems eliminados para Presupuesto ID ${presupuestoId} durante eliminación.`);
+      console.log(`[BACKEND] Ítems eliminados para Presupuesto ID ${presupuestoId} durante eliminación.`);
 
 
       // 2. Eliminar el presupuesto principal
@@ -518,19 +560,21 @@ router.get('/', async (req, res) => {
         await req.db.rollback();
         return res.status(404).json({ error: `No se encontró presupuesto con ID ${presupuestoId} para eliminar.` });
       }
-      console.log(`Presupuesto principal con ID ${presupuestoId} eliminado. Changes: ${result.affectedRows}`);
+      console.log(`[BACKEND] Presupuesto principal con ID ${presupuestoId} eliminado. Changes: ${result.affectedRows}`);
 
 
       // Si todo fue exitoso, confirmar la transacción
       await req.db.commit();
+      console.log(`[BACKEND] Transaction committed for deleting budget ID ${presupuestoId}.`);
 
       // Enviar respuesta de éxito
       res.json({ success: { id: presupuestoId, changes: result.affectedRows } });
 
     } catch (error) {
-      console.error(`Error al eliminar presupuesto con ID ${presupuestoId}:`, error);
+      console.error(`[BACKEND] Error al eliminar presupuesto con ID ${presupuestoId}:`, error);
       // En caso de error, hacer rollback
       await req.db.rollback();
+      console.error('[BACKEND] Transaction rolled back.');
       let userMessage = 'Error interno del servidor al eliminar presupuesto.';
        // Manejar error si hay registros asociados que impidan la eliminación principal (si no se eliminaron por CASCADE o explícitamente)
        if (error.code === 'ER_ROW_IS_REFERENCED_2') {
