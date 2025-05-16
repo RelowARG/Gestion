@@ -266,7 +266,7 @@ function ListaPresupuestos() {
         if (selectedPresupuestoId === presupuestoId) {
             setSelectedPresupuestoId(null); // Deseleccionar si ya estaba seleccionado
         } else {
-            selectedPresupuestoId(presupuestoId); // Corrected typo here: should be setSelectedPresupuestoId
+            setSelectedPresupuestoId(presupuestoId); // Corrected typo here: should be setSelectedPresupuestoId
              // Si hay un formulario abierto para otro presupuesto, cerrarlo
             if (editingPresupuestoId !== null && editingPresupuestoId !== presupuestoId) {
                 setEditingPresupuestoId(null);

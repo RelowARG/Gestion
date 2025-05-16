@@ -80,7 +80,7 @@ function VentaItemsEditor({ items, onItemsChange, productos, savingData, clearTr
      const calculateTotalItem = (cantidad, precioUnitario, descuentoPorcentaje) => {
          const cantidadFloat = parseFloat(cantidad);
          const precioUnitarioFloat = parseFloat(precioUnitario);
-         const descuentoFloat = parseFloat(descuentoPorcentaje) || 0;
+         const descuentoFloat = parseFloat(descuentoPorcentaje) || 0; // Usa 0 si el descuento es null/undefined/NaN
 
          const subtotal = (isNaN(cantidadFloat) || cantidadFloat < 0 || isNaN(precioUnitarioFloat) || precioUnitarioFloat < 0)
                            ? 0
@@ -161,16 +161,13 @@ function VentaItemsEditor({ items, onItemsChange, productos, savingData, clearTr
                    const cantidadFloat = parseFloat(updatedState.Cantidad);
                    const defaultDiscount = calculateDiscountPercentage(cantidadFloat);
                    // Esto sobreescribirá cualquier descuento manual previo al cambiar la cantidad
-                   updatedState.Descuento_Porcentaje = String(defaultDiscount);
-
-                   // --- DEBUG LOG ---
-                   console.log(`[VentaItemsEditor - DEBUG] handleNewItemProductoDetailChange: Cantidad cambiada a ${updatedState.Cantidad}. Descuento calculado por fórmula: ${defaultDiscount}. Estado Descuento_Porcentaje actualizado a: ${updatedState.Descuento_Porcentaje}`);
-                   // --- END DEBUG LOG ---
+                   updatedState.Descuento_Porcentaje = String(defaultDiscount); // Ensure it's stored as string
               }
-               // --- DEBUG LOG ---
-               console.log(`[VentaItemsEditor - DEBUG] handleNewItemProductoDetailChange: Campo ${name} cambiado a ${value}. Estado Descuento_Porcentaje es ahora: "${updatedState.Descuento_Porcentaje}"`);
-               // --- END DEBUG LOG ---
 
+               // --- NUEVO LOG DE DEBUG MUY ESPECÍFICO ---
+               // Este log muestra el estado del descuento justo después de procesar tu input
+               console.log(`[VentaItemsEditor - DEBUG - POST-INPUT] Campo "${name}" cambiado a "${value}". Estado P_Descuento ahora: "${updatedState.Descuento_Porcentaje}" (parseado: ${parseFloat(updatedState.Descuento_Porcentaje)})`);
+               // --- FIN NUEVO LOG DE DEBUG ---
 
              return updatedState;
          });
@@ -227,8 +224,9 @@ function VentaItemsEditor({ items, onItemsChange, productos, savingData, clearTr
              let finalDescuentoPorcentaje;
 
              // Si el valor en el estado del Descuento_Porcentaje es un número válido
+             // Aquí se verifica si lo que está en el estado (que viene del input) es un número válido
              if (newItemProductoData.Descuento_Porcentaje !== '' && !isNaN(stateDescuentoValue)) {
-                 // Usamos el valor del estado (permite override manual)
+                 // Usamos el valor del estado (permite override manual si llegó correctamente al estado)
                  finalDescuentoPorcentaje = stateDescuentoValue;
                   // Validación para el valor manual
                  if (finalDescuentoPorcentaje < 0 || finalDescuentoPorcentaje > 100) {
@@ -250,6 +248,7 @@ function VentaItemsEditor({ items, onItemsChange, productos, savingData, clearTr
              // --- END DEBUG LOG ---
 
 
+             // Calcula el Total_Item que se va a guardar, usando el finalDescuentoPorcentaje (que respeta tu manual)
              const totalItem = calculateTotalItem(cantidad, precioUnitario, finalDescuentoPorcentaje);
               if (isNaN(totalItem)) {
                   setItemError('Error al calcular el Total del Ítem. Revise los valores.');
@@ -262,8 +261,8 @@ function VentaItemsEditor({ items, onItemsChange, productos, savingData, clearTr
                 Producto_id: parseInt(newItemProductoData.Producto_id),
                 Cantidad: cantidad,
                 Precio_Unitario_Venta: precioUnitario,
-                Descuento_Porcentaje: finalDescuentoPorcentaje, // Usar el descuento final determinado
-                Total_Item: totalItem,
+                Descuento_Porcentaje: finalDescuentoPorcentaje, // Usar el descuento final determinado (0% en tu caso)
+                Total_Item: totalItem, // Guardar el total calculado CON tu 0%
 
                 codigo: newItemProductoData.codigo,
                 Descripcion: newItemProductoData.Descripcion,
@@ -339,6 +338,7 @@ function VentaItemsEditor({ items, onItemsChange, productos, savingData, clearTr
     // --- Renderizado ---
 
     // Calcular el Total Ítem para mostrar en tiempo real en el formulario de "Agregar Ítem Producto"
+    // Esta parte usa el valor del estado (manual o por formula) para mostrar el total ANTES de agregarlo
      const currentItemTotal = calculateTotalItem(
          newItemProductoData.Cantidad,
          newItemProductoData.Precio_Unitario_Venta,
@@ -618,24 +618,16 @@ function VentaItemsEditor({ items, onItemsChange, productos, savingData, clearTr
                                     ? getProductDetails(item.Producto_id)
                                     : null;
 
-                                // --- RECALCULAR Descuento y Total para MOSTRAR en la tabla ---
-                                // Esto asegura que la tabla siempre muestre el valor basado en la fórmula actual
-                                // y el total consistente con ese descuento.
-                                const displayCantidad = item.type === 'product' ? item.Cantidad : item.Cantidad_Personalizada;
-                                const displayPrecioUnitario = item.type === 'product' ? item.Precio_Unitario_Venta : item.Precio_Unitario_Personalizada;
+                                // --- MODIFICACIÓN PARA MOSTRAR DESCUENTO GUARDADO ---
+                                // Ya NO usamos calculatedDisplayDiscount para productos, usamos el valor guardado
+                                const displayDiscount = item.type === 'product'
+                                    ? (item.Descuento_Porcentaje !== null && item.Descuento_Porcentaje !== undefined ? item.Descuento_Porcentaje : 0) // Usa el valor GUARDADO
+                                    : (item.Descuento_Porcentaje_Personalizado !== undefined && item.Descuento_Porcentaje_Personalizado !== null ? item.Descuento_Porcentaje_Personalizado : null);
 
-                                // Para mostrar en la tabla, usamos el descuento CALCULADO basado en la cantidad
-                                // del item (ignorando el valor guardado para la visualización en tabla)
-                                const calculatedDisplayDiscount = item.type === 'product'
-                                     ? calculateDiscountPercentage(displayCantidad)
-                                     : (item.Descuento_Porcentaje_Personalizado !== undefined && item.Descuento_Porcentaje_Personalizado !== null ? item.Descuento_Porcentaje_Personalizado : null);
-
-                                // El total mostrado en la tabla también se recalcula
-                                const calculatedDisplayTotal = calculateTotalItem(
-                                    displayCantidad,
-                                    displayPrecioUnitario,
-                                    calculatedDisplayDiscount
-                                );
+                                // Recalculamos el total para MOSTRAR usando el descuento GUARDADO
+                                const displayTotalItem = item.type === 'product'
+                                    ? calculateTotalItem(item.Cantidad, item.Precio_Unitario_Venta, item.Descuento_Porcentaje) // Calcula con el valor GUARDADO
+                                    : (item.Total_Item !== null && item.Total_Item !== undefined ? item.Total_Item : 'N/A'); // Para personalizados, usa el Total_Item guardado
 
 
                                 return (
@@ -659,15 +651,15 @@ function VentaItemsEditor({ items, onItemsChange, productos, savingData, clearTr
                                                 : (item.Precio_Unitario_Personalizada !== null ? parseFloat(item.Precio_Unitario_Personalizada).toFixed(2) : 'N/A')
                                             }
                                         </td>
-                                        {/* Mostrar Descuento (%) - Usar el valor CALCULADO para la visualización en tabla */}
+                                        {/* Mostrar Descuento (%) - AHORA USA item.Descuento_Porcentaje */}
                                         <td>
                                              {item.type === 'product'
-                                                 ? (calculatedDisplayDiscount !== null ? parseFloat(calculatedDisplayDiscount).toFixed(2) : '0.00')
-                                                 : 'N/A'
+                                                 ? (displayDiscount !== null ? parseFloat(displayDiscount).toFixed(2) : '0.00')
+                                                 : 'N/A' // Los personalizados siguen como N/A si no guardan este campo
                                              }
                                         </td>
-                                        {/* Mostrar Total_Item - Usar el valor CALCULADO para la visualización en tabla */}
-                                        <td>{calculatedDisplayTotal !== null && !isNaN(calculatedDisplayTotal) ? parseFloat(calculatedDisplayTotal).toFixed(2) : 'N/A'}</td>
+                                        {/* Mostrar Total_Item - AHORA USA EL TOTAL CALCULADO CON item.Descuento_Porcentaje */}
+                                        <td>{displayTotalItem !== 'N/A' && displayTotalItem !== null && !isNaN(displayTotalItem) ? parseFloat(displayTotalItem).toFixed(2) : 'N/A'}</td>
                                         <td>
                                             <button
                                                 type="button"
