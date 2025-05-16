@@ -27,7 +27,7 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
     const [newItemPersonalizadoData, setNewItemPersonalizadoData] = useState({
         Descripcion_Personalizada: '',
         Cantidad_Personalizada: '',
-        Precio_Unitario_Personalizado: '',
+        Precio_Unitario_Personalizada: '',
         // Descuento_Porcentaje is NOT included here, aligning with VentaItemsEditor's custom items
     });
 
@@ -52,7 +52,7 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
         setItemTypeToAdd(e.target.value);
         // Reset relevant new item data and search state when switching type
         setNewItemProductoData({ Producto_id: '', Cantidad: '', Precio_Unitario: '', Descuento_Porcentaje: '', codigo: '', Descripcion: '' });
-        setNewItemPersonalizadoData({ Descripcion_Personalizada: '', Cantidad_Personalizada: '', Precio_Unitario_Personalizado: '' });
+        setNewItemPersonalizadoData({ Descripcion_Personalizada: '', Cantidad_Personalizada: '', Precio_Unitario_Personalizada: '' });
         setProductSearchTerm('');
         setDisplayList(productos); // Reset product list display
         setItemError(null); // Clear errors
@@ -252,8 +252,9 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
               }
 
             // Create the new product item object
+            // Add 'type' field here when creating new item for internal component use
             newItem = {
-                type: 'product', // Add type for distinction in the list
+                type: 'product', // Add type for distinction in the list (used by the editor)
                 Producto_id: parseInt(newItemProductoData.Producto_id),
                 Cantidad: cantidad,
                 // Store the price before discount
@@ -273,7 +274,7 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
                  // Personalized fields will be null/undefined
                  Descripcion_Personalizada: null,
                  Cantidad_Personalizada: null,
-                 Precio_Unitario_Personalizado: null,
+                 Precio_Unitario_Personalizada: null,
             };
 
             // Reset product item form and search state
@@ -285,14 +286,14 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
              // Validation for custom item
              const descripcionPersonalizada = newItemPersonalizadoData.Descripcion_Personalizada;
              const cantidadPersonalizada = parseFloat(newItemPersonalizadoData.Cantidad_Personalizada);
-             const precioUnitarioPersonalizada = parseFloat(newItemPersonalizadoData.Precio_Unitario_Personalizado);
+             const precioUnitarioPersonalizada = parseFloat(newItemPersonalizadoData.Precio_Unitario_Personalizada);
 
              if (!descripcionPersonalizada) { setItemError('Debe ingresar una descripción para el ítem personalizado.'); return; }
              if (newItemPersonalizadoData.Cantidad_Personalizada === '' || isNaN(cantidadPersonalizada) || cantidadPersonalizada <= 0) {
                  setItemError('Debe ingresar una cantidad válida (> 0) para el ítem personalizado.');
                  return;
              }
-             if (newItemPersonalizadoData.Precio_Unitario_Personalizado === '' || isNaN(precioUnitarioPersonalizada) || precioUnitarioPersonalizada < 0) {
+             if (newItemPersonalizadoData.Precio_Unitario_Personalizada === '' || isNaN(precioUnitarioPersonalizada) || precioUnitarioPersonalizada < 0) {
                   setItemError('Debe ingresar un precio unitario válido (>= 0) para el ítem personalizado.');
                   return;
              }
@@ -306,12 +307,13 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
               }
 
             // Create the new custom item object
+            // Add 'type' field here when creating new item for internal component use
              newItem = {
-                 type: 'custom', // Add type for distinction in the list
+                 type: 'custom', // Add type for distinction in the list (used by the editor)
                  Producto_id: null, // Indicate it's not a product from the catalog
                  Descripcion_Personalizada: descripcionPersonalizada,
                  Cantidad_Personalizada: cantidadPersonalizada,
-                 Precio_Unitario_Personalizado: precioUnitarioPersonalizada,
+                 Precio_Unitario_Personalizada: precioUnitarioPersonalizada,
                  // Descuento_Porcentaje is not applicable/stored for custom items
                  Total_Item: parseFloat(totalItem.toFixed(2)), // Store the calculated total
 
@@ -324,7 +326,7 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
              };
 
             // Reset custom item form state
-            setNewItemPersonalizadoData({ Descripcion_Personalizada: '', Cantidad_Personalizada: '', Precio_Unitario_Personalizado: '' });
+            setNewItemPersonalizadoData({ Descripcion_Personalizada: '', Cantidad_Personalizada: '', Precio_Unitario_Personalizada: '' });
         }
 
         // Add the new item to the list and notify the parent
@@ -368,7 +370,7 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
      );
 
       // Calculate the current custom item total to display in the "Add Custom Item" form in real-time
-     const currentCustomItemTotal = (parseFloat(newItemPersonalizadoData.Cantidad_Personalizada || 0) * parseFloat(newItemPersonalizadoData.Precio_Unitario_Personalizado || 0)).toFixed(2);
+     const currentCustomItemTotal = (parseFloat(newItemPersonalizadoData.Cantidad_Personalizada || 0) * parseFloat(newItemPersonalizadoData.Precio_Unitario_Personalizada || 0)).toFixed(2);
 
 
     return (
@@ -533,8 +535,8 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
                              <input
                                  type="number"
                                  id="item-custom-precio"
-                                 name="Precio_Unitario_Personalizado"
-                                 value={newItemPersonalizadoData.Precio_Unitario_Personalizado}
+                                 name="Precio_Unitario_Personalizada"
+                                 value={newItemPersonalizadoData.Precio_Unitario_Personalizada}
                                  onChange={handleNewItemPersonalizadoChange}
                                  disabled={savingData}
                                  min="0"
@@ -562,7 +564,7 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
                                      savingData ||
                                      !newItemPersonalizadoData.Descripcion_Personalizada || // Must have description
                                      newItemPersonalizadoData.Cantidad_Personalizada === '' || isNaN(parseFloat(newItemPersonalizadoData.Cantidad_Personalizada)) || parseFloat(newItemPersonalizadoData.Cantidad_Personalizada) <= 0 || // Valid quantity
-                                     newItemPersonalizadoData.Precio_Unitario_Personalizado === '' || isNaN(parseFloat(newItemPersonalizadoData.Precio_Unitario_Personalizado)) || parseFloat(newItemPersonalizadoData.Precio_Unitario_Personalizado) < 0 // Valid price
+                                     newItemPersonalizadoData.Precio_Unitario_Personalizada === '' || isNaN(parseFloat(newItemPersonalizadoData.Precio_Unitario_Personalizada)) || parseFloat(newItemPersonalizadoData.Precio_Unitario_Personalizada) < 0 // Valid price
                                  }
                              >
                                  Agregar Ítem Personalizado
@@ -658,22 +660,17 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
                         <tbody>
                             {/* Map through the added items to display them */}
                             {items.map((item, index) => {
+                                // Determine if the item is a product item based on Producto_id presence
+                                const isProductItem = item.Producto_id !== null && item.Producto_id !== undefined;
+
                                 // Helper to get product details for display if the item is a product
-                                const productDetails = item.type === 'product' && item.Producto_id !== null
+                                const productDetails = isProductItem && item.Producto_id !== null
                                     ? getProductDetails(item.Producto_id)
                                     : null;
 
-                                // --- RECALCULATE Discount and Total for DISPLAY in the table (Optional but good for consistency with formula) ---
-                                // This ensures the table display is consistent with the current formula logic,
-                                // even if the saved item might have a manually overridden discount percentage.
-                                // The actual saved `Descuento_Porcentaje` in the item object is used when calculating
-                                // the `Total_Item` when the item is initially added via `handleAddItem`.
-                                const displayCantidad = item.type === 'product' ? item.Cantidad : item.Cantidad_Personalizada;
-                                const displayPrecioUnitario = item.type === 'product' ? item.Precio_Unitario : item.Precio_Unitario_Personalizado;
-
                                 // For displaying in the table, we show the discount percentage stored in the item,
                                 // as this is the value that was used to calculate the saved Total_Item.
-                                const displayDiscountPercentage = item.type === 'product' && item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== null
+                                const displayDiscountPercentage = isProductItem && item.Descuento_Porcentaje !== undefined && item.Descuento_Porcentaje !== null
                                     ? item.Descuento_Porcentaje
                                     : null; // No discount column value for custom items
 
@@ -685,38 +682,39 @@ function PresupuestoItemsEditor({ items, onItemsChange, productos, savingData })
                                 return (
                                     // Use item.id if available, otherwise use index as a fallback key
                                     <tr key={item.id || index}>
-                                        <td>{item.type === 'product' ? 'Producto' : 'Personalizado'}</td>
+                                        {/* MODIFIED: Determine type based on Producto_id presence */}
+                                        <td>{isProductItem ? 'Producto' : 'Personalizado'}</td>
                                         <td>
-                                            {/* Display Code and Description for products, Description for custom items */}
-                                            {item.type === 'product'
+                                            {/* MODIFIED: Display Code and Description for products, Description for custom items based on Producto_id presence */}
+                                            {isProductItem
                                                 ? `${item.codigo || productDetails?.codigo || 'N/A'} - ${item.Descripcion || productDetails?.Descripcion || 'N/A'}`
                                                 : item.Descripcion_Personalizada || 'N/A'
                                             }
                                         </td>
                                         <td>
-                                            {/* Display Quantity based on item type */}
-                                            {item.type === 'product'
-                                                ? (item.Cantidad !== null ? item.Cantidad : 'N/A')
-                                                : (item.Cantidad_Personalizada !== null ? item.Cantidad_Personalizada : 'N/A')
+                                            {/* MODIFIED: Display Quantity based on Producto_id presence */}
+                                            {isProductItem
+                                                ? (item.Cantidad !== null && item.Cantidad !== undefined ? item.Cantidad : 'N/A') // Added undefined check
+                                                : (item.Cantidad_Personalizada !== null && item.Cantidad_Personalizada !== undefined ? item.Cantidad_Personalizada : 'N/A') // Added undefined check
                                             }
                                         </td>
                                         <td>
-                                            {/* Display Unit Price based on item type */}
-                                            {item.type === 'product'
-                                                ? (item.Precio_Unitario !== null ? parseFloat(item.Precio_Unitario).toFixed(2) : 'N/A')
-                                                : (item.Precio_Unitario_Personalizado !== null ? parseFloat(item.Precio_Unitario_Personalizado).toFixed(2) : 'N/A')
+                                            {/* MODIFIED: Display Unit Price based on Producto_id presence */}
+                                            {isProductItem
+                                                ? (item.Precio_Unitario !== null && item.Precio_Unitario !== undefined && !isNaN(parseFloat(item.Precio_Unitario)) ? parseFloat(item.Precio_Unitario).toFixed(2) : 'N/A') // Added undefined/isNaN checks
+                                                : (item.Precio_Unitario_Personalizada !== null && item.Precio_Unitario_Personalizada !== undefined && !isNaN(parseFloat(item.Precio_Unitario_Personalizada)) ? parseFloat(item.Precio_Unitario_Personalizada).toFixed(2) : 'N/A') // Added undefined/isNaN checks
                                             }
                                         </td>
                                         {/* Display Discount (%) only for products */}
                                         <td>
-                                             {item.type === 'product'
+                                             {isProductItem // MODIFIED: Based on Producto_id presence
                                                  ? (displayDiscountPercentage !== null ? parseFloat(displayDiscountPercentage).toFixed(2) : '0.00')
-                                                 : 'N/A' // No discount for custom items in VentaItemsEditor logic
+                                                 : 'N/A'
                                              }
                                         </td>
                                         {/* Display Total_Item */}
                                         <td>
-                                             {displayTotalItem !== null && !isNaN(displayTotalItem)
+                                             {displayTotalItem !== null && displayTotalItem !== undefined && !isNaN(displayTotalItem) // Added undefined check
                                                  ? parseFloat(displayTotalItem).toFixed(2)
                                                  : 'N/A'
                                              }
