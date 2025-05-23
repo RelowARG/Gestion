@@ -1,4 +1,4 @@
-// server.js (Modificado para incluir middleware de autenticación)
+// software-gestion-backend/server.js (Modificado para escuchar en la red y con autenticación)
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcrypt'); // <-- Importar bcrypt
@@ -30,15 +30,7 @@ app.use(cors()); // Considerar CORS más restrictivo en producción
 app.use(dbMiddleware);
 
 // --- Middleware de autenticación ---
-// Este middleware verifica si la solicitud tiene un encabezado 'Authorization'.
-// Por ahora, solo verifica si existe y tiene un valor simple 'Bearer fake-token'.
-// En una implementación real, aquí validarías un token JWT, de sesión, etc.
 const authenticateToken = (req, res, next) => {
-    // Permitir la ruta de login sin autenticación
-    // NOTA: req.path contiene la ruta sin el prefijo '/api' si el middleware se usa en app.use('/api', ...)
-    // O contiene la ruta completa si el middleware se usa en app.use(...)
-    // Vamos a usarlo en app.use('/api', ...), por lo que req.path será la parte después de /api
-    // Por lo tanto, verificamos si req.path es exactamente '/login'
     if (req.path === '/login') {
         console.log('[AuthMiddleware] Permitiendo acceso a /api/login sin token.');
         return next();
@@ -47,43 +39,29 @@ const authenticateToken = (req, res, next) => {
 
 
     const authHeader = req.headers['authorization'];
-    // Esperamos el formato: Bearer TOKEN
     const token = authHeader && authHeader.split(' ')[1];
 
     if (token == null) {
-        // Si no hay token, denegar el acceso con 401 Unauthorized
         console.warn('[AuthMiddleware] Acceso denegado: Token no proporcionado.');
         return res.status(401).json({ error: 'No autenticado: Token no proporcionado.' });
     }
 
-    // Aquí es donde, en un sistema real, validarías el token (ej: JWT)
-    // jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => { ... });
-    // Para este ejemplo, solo verificamos si el token es nuestro 'fake-auth-token'.
-    const FAKE_AUTH_TOKEN = 'fake-auth-token'; // <-- Define un token simple para probar
+    const FAKE_AUTH_TOKEN = 'fake-auth-token'; 
 
     if (token !== FAKE_AUTH_TOKEN) {
-         // Si el token no coincide (en este ejemplo simple)
          console.warn('[AuthMiddleware] Acceso denegado: Token inválido.');
          return res.status(403).json({ error: 'No autorizado: Token inválido.' });
     }
 
-    // Si el token es válido (en este ejemplo simple, si coincide),
-    // puedes adjuntar información del usuario a req si la obtienes de un token JWT
-    // req.user = user; // Por ejemplo, si usas JWT y verificas el payload del token
-
     console.log('[AuthMiddleware] Solicitud autenticada (fake) permitida.');
-    next(); // Pasar al siguiente middleware o manejador de ruta
+    next(); 
 };
 
-// Aplica el middleware de autenticación a todas las rutas bajo '/api'.
-// El middleware mismo contiene la lógica para exceptuar la ruta de login.
 app.use('/api', authenticateToken);
 // --- FIN NUEVO Middleware de autenticación ---
 
 
 // Monta los routers en sus rutas base correspondientes.
-// Ahora, todas estas rutas estarán protegidas por el middleware `authenticateToken`.
-// Nota: En este punto, los routers NO reciben `app` porque no se usaba broadcastUpdate aún.
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/productos', productosRoutes);
 app.use('/api/proveedores', proveedoresRoutes);
@@ -129,17 +107,12 @@ app.post('/api/login', async (req, res) => {
 
 
         if (passwordMatch) {
-            // En una aplicación real, aquí generarías un token JWT
-            // y lo enviarías de vuelta al cliente.
-            // Por ahora, enviamos un mensaje de éxito y un "token" simple preestablecido.
-             const FAKE_AUTH_TOKEN = 'fake-auth-token'; // <-- Define el mismo token simple aquí
+             const FAKE_AUTH_TOKEN = 'fake-auth-token'; 
              const userInfo = {
                  id: user.id,
                  username: user.username,
                  role: user.role,
-                 // NO incluyas el hash de la contraseña
              };
-             // Enviamos el token simple y la info básica del usuario en la respuesta.
              console.log('[LoginEndpoint] Contraseña correcta. Enviando respuesta de éxito.');
              res.json({ success: true, message: 'Inicio de sesión exitoso.', user: userInfo, token: FAKE_AUTH_TOKEN });
 
@@ -157,19 +130,18 @@ app.post('/api/login', async (req, res) => {
 
 // Ruta principal de la API
 app.get('/api', (req, res) => {
-    // Esta ruta ahora también requiere autenticación debido al middleware aplicado
     res.send('Backend de software-gestion V2 está funcionando modularmente (autenticado).');
 });
 
 
 // Inicia el servidor
-app.listen(port, () => {
-  console.log(`Backend de software-gestion V2 escuchando en http://localhost:${port}`);
+// MODIFICACIÓN: Escuchar en '0.0.0.0' para aceptar conexiones de red
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Backend de software-gestion V2 escuchando en todas las interfaces de red en el puerto ${port}`);
 });
 
 // Manejo de cierre de DB si el proceso del servidor se detiene
 process.on('SIGINT', async () => {
     console.log('Cerrando servidor y saliendo...');
-    // Si usas un pool de conexiones, ciérralo aquí.
     process.exit(0);
 });

@@ -1,4 +1,4 @@
-// src/App.js (Corregido - Error de renderizado de función en Route)
+// src/App.js (Modificado para manejar edición en ListaVentasXGlobal)
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -13,10 +13,12 @@ import ListaCompras from './components/ListaCompras';
 import ListaStock from './components/ListaStock';
 import ListaPresupuestos from './components/ListaPresupuestos';
 import ListaVentasX from './components/ListaVentasX';
-// Importar ListaVentasGlobal y el nuevo VentaEditor
+// Importar ListaVentasGlobal y VentaEditor
 import ListaVentasGlobal from './components/ListaVentasGlobal';
 import VentaEditor from './components/ventas/VentaEditor';
+// Importar ListaVentasXGlobal y el nuevo VentaXEditor
 import ListaVentasXGlobal from './components/ListaVentasXGlobal';
+import VentaXEditor from './components/ventasx/VentaXEditor'; // <-- ASEGÚRATE DE IMPORTAR VentaXEditor
 import ListaComprasGlobal from './components/ListaComprasGlobal';
 import CashFlow from './components/CashFlow';
 import Statistics from './components/Statistics';
@@ -94,34 +96,16 @@ function App() {
                         <Route path="/presupuestos" element={<ProtectedRoute><ListaPresupuestos /></ProtectedRoute>} />
                         <Route path="/ventasx" element={<ProtectedRoute><ListaVentasX /></ProtectedRoute>} />
 
-                        {/* --- Modificación CORREGIDA para la ruta /listados-ventas --- */}
-                        {/* Creamos un componente funcional INLINE directamente como valor de la prop element */}
                         <Route
                             path="/listados-ventas"
                             element={
                                 <ProtectedRoute>
-                                    {/* Aquí está el componente funcional inline, notese que no está dentro de {} */}
-                                    {(() => { // <--- Quitamos las llaves y el return explícito alrededor del componente interno
-                                        // Estado local dentro de esta ruta para saber qué venta se está editando
+                                    {(() => {
                                         const [editingVentaId, setEditingVentaId] = useState(null);
+                                        const handleEditFromGlobal = (ventaId) => setEditingVentaId(ventaId);
+                                        const handleCancelEdit = () => setEditingVentaId(null);
+                                        const handleSaveSuccess = () => setEditingVentaId(null); // Quizás recargar lista
 
-                                        // Handlers para la comunicación entre componentes
-                                        const handleEditFromGlobal = (ventaId) => {
-                                            console.log("Solicitud de edición recibida en App.js para Venta ID:", ventaId);
-                                            setEditingVentaId(ventaId);
-                                        };
-
-                                        const handleCancelEdit = () => {
-                                            console.log("Edición cancelada. Volviendo a la lista.");
-                                            setEditingVentaId(null);
-                                        };
-
-                                        const handleSaveSuccess = () => {
-                                            console.log("Cambios guardados exitosamente. Volviendo a la lista.");
-                                            setEditingVentaId(null);
-                                        };
-
-                                        // Renderizar condicionalmente VentaEditor o ListaVentasGlobal
                                         return (
                                             editingVentaId ? (
                                                 <VentaEditor
@@ -133,14 +117,56 @@ function App() {
                                                 <ListaVentasGlobal onEditSale={handleEditFromGlobal} />
                                             )
                                         );
-                                    })()} {/* <--- Agregamos los parentesis para LLAMAR a la función inmediatamente */}
+                                    })()}
                                 </ProtectedRoute>
                             }
                         />
-                        {/* --- Fin Modificación CORREGIDA --- */}
 
+                        {/* --- NUEVA LÓGICA PARA /listados-ventasx --- */}
+                        <Route
+                            path="/listados-ventasx"
+                            element={
+                                <ProtectedRoute>
+                                    {(() => {
+                                        // Estado local DENTRO de esta ruta para saber qué VENTA X se está editando
+                                        const [editingVentaXId, setEditingVentaXId] = useState(null); // Estado específico para VentasX
 
-                        <Route path="/listados-ventasx" element={<ProtectedRoute><ListaVentasXGlobal /></ProtectedRoute>} />
+                                        // Handlers para la comunicación entre ListaVentasXGlobal y VentaXEditor
+                                        const handleEditVentaXFromGlobal = (ventaXId) => {
+                                            console.log("App.js: Solicitud de edición recibida para Venta X ID:", ventaXId);
+                                            setEditingVentaXId(ventaXId);
+                                        };
+
+                                        const handleCancelEditVentaX = () => {
+                                            console.log("App.js: Edición de Venta X cancelada. Volviendo a la lista.");
+                                            setEditingVentaXId(null);
+                                        };
+
+                                        const handleSaveSuccessVentaX = () => {
+                                            console.log("App.js: Cambios en Venta X guardados. Volviendo a la lista.");
+                                            setEditingVentaXId(null);
+                                            // Aquí podrías añadir lógica para refrescar la lista de ListaVentasXGlobal si es necesario
+                                        };
+
+                                        // Renderizar condicionalmente VentaXEditor o ListaVentasXGlobal
+                                        return (
+                                            editingVentaXId ? (
+                                                <VentaXEditor
+                                                    ventaId={editingVentaXId} // Pasar el ID de la Venta X
+                                                    onCancel={handleCancelEditVentaX}
+                                                    onSaveSuccess={handleSaveSuccessVentaX}
+                                                />
+                                            ) : (
+                                                // Pasar la función correcta a onEditSale
+                                                <ListaVentasXGlobal onEditSale={handleEditVentaXFromGlobal} />
+                                            )
+                                        );
+                                    })()}
+                                </ProtectedRoute>
+                            }
+                        />
+                        {/* --- FIN NUEVA LÓGICA --- */}
+
                         <Route path="/listados-compras" element={<ProtectedRoute><ListaComprasGlobal /></ProtectedRoute>} />
                         <Route path="/cashflow" element={<ProtectedRoute><CashFlow /></ProtectedRoute>} />
                         <Route path="/balance" element={<ProtectedRoute><Balance /></ProtectedRoute>} />
